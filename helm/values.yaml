@@ -8,26 +8,25 @@ image:
   pullPolicy: IfNotPresent
 
 # ----------------------------------------------------------------------------------------------
-# Credentials
+# Connection fields & credentials
 #
-# The chart manages no Secrets — you pre-create them. The chart routes each credential to ONLY the
+# The chart manages no Secrets — you pre-create them. The chart routes each value to ONLY the
 # phases that need it (migrate / serve / register), so you never wire phases yourself.
 #
-# Two ways to supply a credential, mixable:
+# Every field under db / accounts / starrocks is "literal-or-sourced" — set it one of these ways
+# (mixable across fields):
 #
-# 1. Group default (terse). Set `<group>.secret: <secret-name>` once; every credential in that
-#    group is read from that Secret using a default key equal to the ENV VAR NAME — so the Secret
-#    must contain keys like RANGER_DB_PASSWORD, RANGER_ADMIN_PASSWORD, etc. (the same Secret then
-#    also works for a raw extraEnvFrom import).
+#   <literal>                                          # plain value (e.g. db.host: my-pg:5432)
+#   { value: <literal> }                               # plain value (explicit)
+#   { secret:    { name?: <secret>, key?: <key> } }    # -> valueFrom.secretKeyRef
+#   { configMap: { name: <cm>,      key: <key> } }     # -> valueFrom.configMapKeyRef
+#   {} / "" (empty)                                    # pulled from the group secret (below), else nothing
 #
-# 2. Per-field source (explicit, overrides the group). Each credential field takes one of:
-#       secret:    { name: <secret-name>,     key: <key> }   # name falls back to <group>.secret
-#       configMap: { name: <configmap-name>,  key: <key> }
-#       value:     "<literal>"                                # plain value (non-prod / testing)
-#       "<key>"                                               # shorthand: key in <group>.secret
-#
-# A field left empty ({}) with no group secret renders nothing (supply it via a phase's
-# extraEnv/extraEnvFrom escape hatch instead).
+# Group default: set `<group>.secret: <name>` once and any EMPTY field in that group is read from
+# that Secret using a default key equal to the ENV VAR NAME (RANGER_DB_PASSWORD, RANGER_DB_HOST, ...).
+# In a per-field `secret:`, an omitted name/key falls back to the group secret / that default key.
+# Because keys default to env-var names, the same Secret also works as a raw extraEnvFrom import.
+# (db.rootPassword has no default key, so the group secret never auto-pulls it.)
 # ----------------------------------------------------------------------------------------------
 db:
   host: ""
@@ -53,10 +52,10 @@ starrocks:
   # true  -> RANGER_STARROCKS_AUTOCOMPLETE=yes: enables the StarRocks plugin class (UI Test
   #          Connection / resource autocomplete) and REQUIRES the username/password below.
   # false -> base class, no probing; username/password are optional.
-  autocomplete: true
-  serviceName: "starrocks"
-  jdbcUrl: ""
-  secret: ""                     # default Secret name for the starrocks.* credentials below
+  autocomplete: true             # boolean: true=yes (requires username+password), false=no
+  serviceName: "starrocks"       # RANGER_STARROCKS_SERVICE_NAME -> register (literal or sourced)
+  jdbcUrl: ""                    # RANGER_STARROCKS_JDBC_URL     -> register (literal or sourced)
+  secret: ""                     # default Secret name for all starrocks.* fields below
   # Required only when register is enabled AND autocomplete is true.
   username: {}                   # RANGER_STARROCKS_USERNAME -> register
   password: {}                   # RANGER_STARROCKS_PASSWORD -> register

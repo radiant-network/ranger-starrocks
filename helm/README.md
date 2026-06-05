@@ -54,17 +54,20 @@ Because the default keys are the env-var names, the same Secret also works as a 
 import. (`db.rootPassword` is optional and is **not** auto-pulled by `db.secret` — set it explicitly
 if you need it.)
 
-**2. Per-field source (explicit; overrides the group).** Each credential field takes one of:
+**2. Per-field source (explicit; overrides the group).** Every field under `db` / `accounts` /
+`starrocks` — including the connection fields `db.host` / `db.name` / `db.user` — is
+"literal-or-sourced":
 
 ```yaml
-secret:    { name: <secret-name>,    key: <key> }   # -> valueFrom.secretKeyRef (name falls back to <group>.secret)
-configMap: { name: <configmap-name>, key: <key> }   # -> valueFrom.configMapKeyRef
-value:     "<literal>"                               # -> plain value (non-prod / testing only)
-"<key>"                                              # shorthand: that key in <group>.secret
+<literal>                                          # plain value (e.g. db.host: my-pg:5432)
+value:     "<literal>"                             # plain value (explicit)
+secret:    { name: <secret>,    key: <key> }       # -> valueFrom.secretKeyRef (name/key fall back to the group secret / env-var name)
+configMap: { name: <configmap>, key: <key> }       # -> valueFrom.configMapKeyRef
 ```
 
-A field left empty (`{}`, the default) with no group `secret` renders nothing — use it for
-credentials you'd rather supply via a phase's `extraEnv` / `extraEnvFrom` escape hatch.
+So you can pull the DB host from a Secret too, e.g. `db.host: { secret: { key: RANGER_DB_HOST } }`,
+or just set `db.secret` and leave `db.host` empty. A field left empty (`{}`/`""`) with no group
+`secret` renders nothing — use a phase's `extraEnv` / `extraEnvFrom` escape hatch for those.
 
 | Credential field | Env var | Routed to |
 |---|---|---|

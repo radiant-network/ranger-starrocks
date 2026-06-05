@@ -28,7 +28,7 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["register"]
           env:
-            {{- include "ranger.registerEnv" . | nindent 12 }}
+            {{- include "ranger.registerEnv" . | trimPrefix "\n" | nindent 12 }}
             {{- if .Values.register.extraEnv }}
             {{- toYaml .Values.register.extraEnv | nindent 12 }}
             {{- end }}
