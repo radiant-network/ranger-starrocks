@@ -1,0 +1,70 @@
+{{- if .Values.serve.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ranger.fullname" . }}
+  labels:
+    {{- include "ranger.labels" . | nindent 4 }}
+    app.kubernetes.io/component: serve
+spec:
+  replicas: {{ .Values.serve.replicas }}
+  selector:
+    matchLabels:
+      {{- include "ranger.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ranger.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: serve
+    spec:
+      {{- if .Values.serve.initContainers }}
+      initContainers:
+        {{- toYaml .Values.serve.initContainers | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: ranger
+          image: {{ include "ranger.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["serve"]
+          ports:
+            - name: http
+              containerPort: 6080
+              protocol: TCP
+          env:
+            {{- include "ranger.serveEnv" . | nindent 12 }}
+            {{- if .Values.serve.extraEnv }}
+            {{- toYaml .Values.serve.extraEnv | nindent 12 }}
+            {{- end }}
+          {{- if .Values.serve.extraEnvFrom }}
+          envFrom:
+            {{- toYaml .Values.serve.extraEnvFrom | nindent 12 }}
+          {{- end }}
+          {{- if .Values.serve.extraVolumeMounts }}
+          volumeMounts:
+            {{- toYaml .Values.serve.extraVolumeMounts | nindent 12 }}
+          {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /login.jsp
+              port: 6080
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 20
+          livenessProbe:
+            httpGet:
+              path: /login.jsp
+              port: 6080
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          {{- with .Values.serve.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- if .Values.serve.extraVolumes }}
+      volumes:
+        {{- toYaml .Values.serve.extraVolumes | nindent 8 }}
+      {{- end }}
+{{- end }}

@@ -1,0 +1,275 @@
+suite: phase toggles, isolation, and optional blocks
+release:
+  name: ranger
+templates:
+  - migrate-job.yaml
+  - deployment.yaml
+  - service.yaml
+  - register-job.yaml
+  - ingress.yaml
+set:
+  image.repository: ranger-dual-mode
+  db.host: postgres:5432
+
+tests:
+  # ----------------------------------------------------------------------------------
+  # Phase toggles
+  # ----------------------------------------------------------------------------------
+  - it: renders all three phases by default
+    template: migrate-job.yaml
+    asserts:
+      - hasDocuments: { count: 1 }
+      - isKind: { of: Job }
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: pre-install,pre-upgrade
+
+  - it: skips the migrate Job when migrate.enabled is false
+    template: migrate-job.yaml
+    set:
+      migrate.enabled: false
+    asserts:
+      - hasDocuments: { count: 0 }
+
+  - it: skips the register Job when register.enabled is false
+    template: register-job.yaml
+    set:
+      register.enabled: false
+    asserts:
+      - hasDocuments: { count: 0 }
+
+  - it: skips the Deployment when serve.enabled is false
+    template: deployment.yaml
+    set:
+      serve.enabled: false
+    asserts:
+      - hasDocuments: { count: 0 }
+
+  - it: skips the Service when serve.enabled is false
+    template: service.yaml
+    set:
+      serve.enabled: false
+    asserts:
+      - hasDocuments: { count: 0 }
+
+  # ----------------------------------------------------------------------------------
+  # Phase command + hook wiring
+  # ----------------------------------------------------------------------------------
+  - it: migrate runs the migrate command
+    template: migrate-job.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].command
+          value: ["migrate"]
+
+  - it: serve runs the serve command and is not a hook
+    template: deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].command
+          value: ["serve"]
+      - isNull:
+          path: metadata.annotations
+
+  - it: register runs the register command as a post hook with OnFailure restart
+    template: register-job.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].command
+          value: ["register"]
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: post-install,post-upgrade
+      - equal:
+          path: spec.template.spec.restartPolicy
+          value: OnFailure
+
+  # ----------------------------------------------------------------------------------
+  # Secret isolation: each phase carries ONLY its non-secret config vars, and the
+  # chart never injects credentials directly (those come via extraEnvFrom).
+  # ----------------------------------------------------------------------------------
+  - it: serve env does not leak Ranger account passwords
+    template: deployment.yaml
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: RANGER_ADMIN_PASSWORD }
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: RANGER_KEYADMIN_PASSWORD }
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_REGISTER_ON_SERVE")].value
+          value: "false"
+
+  - it: migrate env does not carry StarRocks vars
+    template: migrate-job.yaml
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: RANGER_STARROCKS_JDBC_URL }
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: RANGER_ADMIN_URL }
+
+  - it: register env does not carry DB vars
+    template: register-job.yaml
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: RANGER_DB_HOST }
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: RANGER_DB_PASSWORD }
+
+  - it: migrate env is exactly the 3 non-secret vars, each a plain value (no secretKeyRef)
+    template: migrate-job.yaml
+    asserts:
+      - lengthEqual:
+          path: spec.template.spec.containers[0].env
+          count: 3
+      - equal:
+          path: spec.template.spec.containers[0].env[0].value
+          value: postgres:5432
+      - notExists:
+          path: spec.template.spec.containers[0].env[0].valueFrom
+
+  # ----------------------------------------------------------------------------------
+  # Optional blocks: absent by default, wired when set
+  # ----------------------------------------------------------------------------------
+  - it: serve has no initContainers, extra volumes, or envFrom by default
+    template: deployment.yaml
+    asserts:
+      - isNull:
+          path: spec.template.spec.initContainers
+      - isNull:
+          path: spec.template.spec.volumes
+      - isNull:
+          path: spec.template.spec.containers[0].volumeMounts
+      - isNull:
+          path: spec.template.spec.containers[0].envFrom
+
+  - it: wires initContainers, extra volumes, mounts, env, and envFrom into serve
+    template: deployment.yaml
+    set:
+      serve.initContainers:
+        - name: copy-ssl-cert
+          image: busybox:1.36
+      serve.extraVolumes:
+        - name: ssl-cert
+          emptyDir: {}
+      serve.extraVolumeMounts:
+        - name: ssl-cert
+          mountPath: /ssl
+      serve.extraEnv:
+        - name: DB_SSL_CA
+          value: /ssl/ca.crt
+      serve.extraEnvFrom:
+        - secretRef:
+            name: ranger-db-secret
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: copy-ssl-cert
+      - contains:
+          path: spec.template.spec.volumes
+          content: { name: ssl-cert, emptyDir: {} }
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content: { name: ssl-cert, mountPath: /ssl }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: DB_SSL_CA, value: /ssl/ca.crt }
+      - contains:
+          path: spec.template.spec.containers[0].envFrom
+          content: { secretRef: { name: ranger-db-secret } }
+
+  - it: supports multiple envFrom sources on the migrate Job
+    template: migrate-job.yaml
+    set:
+      migrate.extraEnvFrom:
+        - secretRef:
+            name: ranger-credentials
+        - configMapRef:
+            name: ranger-config
+    asserts:
+      - lengthEqual:
+          path: spec.template.spec.containers[0].envFrom
+          count: 2
+      - contains:
+          path: spec.template.spec.containers[0].envFrom
+          content: { secretRef: { name: ranger-credentials } }
+      - contains:
+          path: spec.template.spec.containers[0].envFrom
+          content: { configMapRef: { name: ranger-config } }
+
+  # ----------------------------------------------------------------------------------
+  # Ingress
+  # ----------------------------------------------------------------------------------
+  - it: renders no Ingress by default
+    template: ingress.yaml
+    asserts:
+      - hasDocuments: { count: 0 }
+
+  - it: renders no Ingress when serve is disabled even if ingress is enabled
+    template: ingress.yaml
+    set:
+      serve.enabled: false
+      serve.ingress.enabled: true
+      serve.ingress.hosts:
+        - name: ranger.example.com
+    asserts:
+      - hasDocuments: { count: 0 }
+
+  - it: renders an Ingress routing to the serve Service with overrides honored
+    template: ingress.yaml
+    set:
+      serve.ingress.enabled: true
+      serve.ingress.ingressClassName: alb
+      serve.ingress.path: /
+      serve.ingress.pathType: Prefix
+      serve.ingress.annotations:
+        alb.ingress.kubernetes.io/target-type: ip
+      serve.ingress.hosts:
+        - name: ranger.example.com
+    asserts:
+      - isKind: { of: Ingress }
+      - equal: { path: spec.ingressClassName, value: alb }
+      - equal:
+          path: metadata.annotations["alb.ingress.kubernetes.io/target-type"]
+          value: ip
+      - equal:
+          path: spec.rules[0].host
+          value: ranger.example.com
+      - equal:
+          path: spec.rules[0].http.paths[0].path
+          value: /
+      - equal:
+          path: spec.rules[0].http.paths[0].pathType
+          value: Prefix
+      - equal:
+          path: spec.rules[0].http.paths[0].backend.service.name
+          value: ranger
+      - equal:
+          path: spec.rules[0].http.paths[0].backend.service.port.number
+          value: 6080
+      - isNull: { path: spec.tls }
+
+  - it: emits a tls block only for hosts that enable it
+    template: ingress.yaml
+    set:
+      serve.ingress.enabled: true
+      serve.ingress.hosts:
+        - name: ranger.example.com
+          tls:
+            enabled: true
+            secretName: ranger-tls
+        - name: internal.example.com
+    asserts:
+      - lengthEqual: { path: spec.tls, count: 1 }
+      - equal:
+          path: spec.tls[0].hosts[0]
+          value: ranger.example.com
+      - equal:
+          path: spec.tls[0].secretName
+          value: ranger-tls
+      - lengthEqual: { path: spec.rules, count: 2 }

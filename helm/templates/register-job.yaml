@@ -1,0 +1,39 @@
+{{- if .Values.register.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "ranger.fullname" . }}-register
+  labels:
+    {{- include "ranger.labels" . | nindent 4 }}
+    app.kubernetes.io/component: register
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.register.backoffLimit }}
+  {{- with .Values.register.ttlSecondsAfterFinished }}
+  ttlSecondsAfterFinished: {{ . }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "ranger.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: register
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: register
+          image: {{ include "ranger.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["register"]
+          env:
+            {{- include "ranger.registerEnv" . | nindent 12 }}
+            {{- if .Values.register.extraEnv }}
+            {{- toYaml .Values.register.extraEnv | nindent 12 }}
+            {{- end }}
+          {{- if .Values.register.extraEnvFrom }}
+          envFrom:
+            {{- toYaml .Values.register.extraEnvFrom | nindent 12 }}
+          {{- end }}
+{{- end }}

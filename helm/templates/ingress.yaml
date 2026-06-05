@@ -1,0 +1,49 @@
+{{- if and .Values.serve.enabled .Values.serve.ingress.enabled }}
+{{- $fullName := include "ranger.fullname" . }}
+{{- $svcPort := .Values.serve.service.port }}
+{{- $ingress := .Values.serve.ingress }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "ranger.labels" . | nindent 4 }}
+    app.kubernetes.io/component: serve
+  {{- with $ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with $ingress.ingressClassName }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- $tlsHosts := list }}
+  {{- range $ingress.hosts }}
+    {{- if and .tls .tls.enabled }}
+      {{- $tlsHosts = append $tlsHosts . }}
+    {{- end }}
+  {{- end }}
+  {{- if $tlsHosts }}
+  tls:
+    {{- range $tlsHosts }}
+    - hosts:
+        - {{ .name | quote }}
+      {{- with .tls.secretName }}
+      secretName: {{ . }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  rules:
+    {{- range $ingress.hosts }}
+    - host: {{ .name | quote }}
+      http:
+        paths:
+          - path: {{ $ingress.path }}
+            pathType: {{ $ingress.pathType }}
+            backend:
+              service:
+                name: {{ $fullName }}
+                port:
+                  number: {{ $svcPort }}
+    {{- end }}
+{{- end }}

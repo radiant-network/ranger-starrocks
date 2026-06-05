@@ -1,0 +1,6 @@
+apiVersion: v2
+name: ranger
+description: Apache Ranger admin with 3-phase orchestration (migrate / serve / register)
+type: application
+version: 0.1.0
+appVersion: "2.8.0"

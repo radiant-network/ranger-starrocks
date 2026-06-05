@@ -1,0 +1,130 @@
+image:
+  repository: ""
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+db:
+  host: ""
+  name: ranger
+  user: rangeradmin
+
+ranger:
+  policyMgrExternalUrl: "http://ranger:6080"
+
+starrocks:
+  autocomplete: "yes"
+  serviceName: "starrocks"
+  jdbcUrl: ""
+
+migrate:
+  enabled: true
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 300
+  # Individual env vars (raw EnvVar objects: name/value or name/valueFrom).
+  extraEnv: []
+  # Bulk-load Secrets or ConfigMaps into the migrate Job.
+  # Example:
+  #   extraEnvFrom:
+  #     - secretRef:
+  #         name: ranger-credentials
+  extraEnvFrom: []
+
+serve:
+  enabled: true
+  replicas: 1
+
+  # Init containers run before the ranger container starts in the serve Deployment.
+  # Use to prepare shared volumes — e.g. copying SSL certificates for StarRocks TLS.
+  #
+  # Example — copy a CA cert from a Secret into a shared emptyDir:
+  #
+  #   initContainers:
+  #     - name: copy-ssl-cert
+  #       image: busybox:1.36
+  #       command: ["sh", "-c", "cp /certs-src/ca.crt /ssl/ca.crt && chmod 444 /ssl/ca.crt"]
+  #       volumeMounts:
+  #         - name: ssl-cert-src
+  #           mountPath: /certs-src
+  #           readOnly: true
+  #         - name: ssl-cert
+  #           mountPath: /ssl
+  #
+  #   extraVolumes:
+  #     - name: ssl-cert-src
+  #       secret:
+  #         secretName: starrocks-tls-ca
+  #     - name: ssl-cert
+  #       emptyDir: {}
+  #
+  #   extraVolumeMounts:
+  #     - name: ssl-cert
+  #       mountPath: /ssl
+  #       readOnly: true
+  #
+  #   extraEnv:
+  #     - name: DB_SSL_CA
+  #       value: /ssl/ca.crt
+  initContainers: []
+
+  # Additional volumes attached to the serve Deployment pod (paired with initContainers above).
+  extraVolumes: []
+
+  # Additional volume mounts for the ranger container in the serve Deployment.
+  extraVolumeMounts: []
+
+  # Individual env vars for the serve Deployment.
+  # Use for feature flags or paths set by init containers (e.g. DB_SSL_CA).
+  extraEnv: []
+  # Bulk-load Secrets or ConfigMaps into the serve Deployment.
+  # Example:
+  #   extraEnvFrom:
+  #     - secretRef:
+  #         name: ranger-db-secret
+  #     - secretRef:
+  #         name: ranger-tls-secret
+  #     - configMapRef:
+  #         name: ranger-audit-config
+  extraEnvFrom: []
+
+  resources: {}
+
+  service:
+    type: ClusterIP
+    port: 6080
+
+  # Ingress for the serve admin UI/REST (port 6080). Modeled after the Airflow chart's
+  # ingress block — override ingressClassName, path/pathType, hosts, annotations, and TLS.
+  ingress:
+    enabled: false
+    ingressClassName: ""
+    # Default path "/" with pathType Prefix. Note (as on the AWS ALB controller):
+    # Prefix "/" is expanded to the path-pattern "/*", so static assets route through;
+    # ImplementationSpecific "/" may match only "/" exactly and 404 the UI bundle.
+    path: /
+    pathType: Prefix
+    annotations: {}
+    #   alb.ingress.kubernetes.io/target-type: ip
+    #   alb.ingress.kubernetes.io/healthcheck-path: /login.jsp
+    # hosts is a list of { name, tls: { enabled, secretName } }.
+    hosts: []
+    #   - name: ranger.dev.example.com
+    #     tls:
+    #       enabled: true
+    #       secretName: ranger-tls
+
+register:
+  enabled: true
+  backoffLimit: 6
+  ttlSecondsAfterFinished: 300
+  adminUrl: "http://ranger:6080"
+  adminUser: admin
+  # Individual env vars for the register Job.
+  extraEnv: []
+  # Bulk-load Secrets or ConfigMaps into the register Job.
+  # Example:
+  #   extraEnvFrom:
+  #     - secretRef:
+  #         name: ranger-admin-secret
+  #     - secretRef:
+  #         name: ranger-starrocks-secret
+  extraEnvFrom: []

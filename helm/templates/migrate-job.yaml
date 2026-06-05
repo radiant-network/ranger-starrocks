@@ -1,0 +1,39 @@
+{{- if .Values.migrate.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "ranger.fullname" . }}-migrate
+  labels:
+    {{- include "ranger.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.migrate.backoffLimit }}
+  {{- with .Values.migrate.ttlSecondsAfterFinished }}
+  ttlSecondsAfterFinished: {{ . }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "ranger.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: {{ include "ranger.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["migrate"]
+          env:
+            {{- include "ranger.migrateEnv" . | nindent 12 }}
+            {{- if .Values.migrate.extraEnv }}
+            {{- toYaml .Values.migrate.extraEnv | nindent 12 }}
+            {{- end }}
+          {{- if .Values.migrate.extraEnvFrom }}
+          envFrom:
+            {{- toYaml .Values.migrate.extraEnvFrom | nindent 12 }}
+          {{- end }}
+{{- end }}
