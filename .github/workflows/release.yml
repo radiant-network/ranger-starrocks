@@ -13,9 +13,12 @@ on:
     tags: ["v*"]
 
 # Built-in GITHUB_TOKEN needs package write to push to GHCR (image + OCI chart).
+# attestations/id-token cover docker/build-push-action's default provenance attestation.
 permissions:
   contents: read
   packages: write
+  attestations: write
+  id-token: write
 
 concurrency:
   group: release-${{ github.ref }}
