@@ -46,7 +46,9 @@ accounts:
   usersync: ""                   # RANGER_USERSYNC_PASSWORD -> migrate
 
 ranger:
-  policyMgrExternalUrl: "http://ranger:6080"
+  # External URL of the admin UI — used for RANGER_POLICYMGR_EXTERNAL_URL and as the default
+  # ingress host (scheme + port stripped). Override serve.ingress.hosts to use a different host.
+  externalUrl: ""
 
 starrocks:
   # true  -> RANGER_STARROCKS_AUTOCOMPLETE=yes: enables the StarRocks plugin class (UI Test

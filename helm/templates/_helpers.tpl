@@ -44,6 +44,17 @@ Image reference shared by all three phases.
 {{- end }}
 
 {{/*
+Ingress host derived from ranger.externalUrl (scheme + port stripped).
+Returns empty string if externalUrl is not set.
+*/}}
+{{- define "ranger.derivedIngressHost" -}}
+{{- if .Values.ranger.externalUrl -}}
+{{- $parsed := .Values.ranger.externalUrl | urlParse -}}
+{{- $parsed.host | splitList ":" | first -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Render one env entry that is either a literal value or sourced from a Secret/ConfigMap, with a
 group-level default Secret name and a default key.
 Takes (dict "name" <ENV> "spec" <field> "secret" <group-secret> "key" <default-key>).
@@ -122,7 +133,7 @@ against the DB that migrate populated).
 {{- include "ranger.credEnv" (dict "name" "RANGER_DB_NAME" "spec" .Values.db.name "secret" .Values.db.secret "key" "RANGER_DB_NAME") }}
 {{- include "ranger.credEnv" (dict "name" "RANGER_DB_USER" "spec" .Values.db.user "secret" .Values.db.secret "key" "RANGER_DB_USER") }}
 - name: RANGER_POLICYMGR_EXTERNAL_URL
-  value: {{ .Values.ranger.policyMgrExternalUrl | quote }}
+  value: {{ .Values.ranger.externalUrl | quote }}
 - name: RANGER_REGISTER_ON_SERVE
   value: "false"
 {{- include "ranger.credEnv" (dict "name" "RANGER_DB_PASSWORD" "spec" .Values.db.password "secret" .Values.db.secret "key" "RANGER_DB_PASSWORD") }}

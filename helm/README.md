@@ -42,12 +42,12 @@ from that Secret, using a default key equal to the **env-var name**:
 ```yaml
 db:
   host: my-postgres:5432
-  secret: ranger-db          # must contain key RANGER_DB_PASSWORD
+  secret: ranger-db          # must contain key RANGER_DB_PASSWORD (and RANGER_DB_HOST etc. if those fields are empty)
 accounts:
-  secret: ranger-accounts    # keys RANGER_ADMIN_PASSWORD, RANGER_KEYADMIN_PASSWORD, ...
+  secret: ranger-accounts    # keys: RANGER_ADMIN_PASSWORD, RANGER_KEYADMIN_PASSWORD, RANGER_TAGSYNC_PASSWORD, RANGER_USERSYNC_PASSWORD
 starrocks:
   jdbcUrl: jdbc:mysql://starrocks:9030
-  secret: ranger-starrocks   # keys RANGER_STARROCKS_USERNAME, RANGER_STARROCKS_PASSWORD
+  secret: ranger-starrocks   # keys: RANGER_STARROCKS_USERNAME, RANGER_STARROCKS_PASSWORD
 ```
 
 Because the default keys are the env-var names, the same Secret also works as a raw `extraEnvFrom`
@@ -55,17 +55,17 @@ import. (`db.rootPassword` is optional and is **not** auto-pulled by `db.secret`
 if you need it.)
 
 **2. Per-field source (explicit; overrides the group).** Every field under `db` / `accounts` /
-`starrocks` — including the connection fields `db.host` / `db.name` / `db.user` — is
+`starrocks` — including connection fields like `db.host` / `db.name` / `db.user` — is
 "literal-or-sourced":
 
 ```yaml
 secret:    { name: <secret>,    key: <key> }   # -> valueFrom.secretKeyRef (name/key fall back to group secret / env-var name)
 configMap: { name: <configmap>, key: <key> }   # -> valueFrom.configMapKeyRef
-value:     "<literal>"                         # -> plain value
+value:     "<literal>"                         # -> plain value (explicit map form)
 ```
 
-A field left empty (`""`) with no group `secret` renders nothing — use a phase's `extraEnv` /
-`extraEnvFrom` escape hatch for those.
+Plain scalars also work (e.g. `db.host: my-pg:5432`). A field left empty (`""`) with no group
+`secret` renders nothing — use a phase's `extraEnv` / `extraEnvFrom` escape hatch for those.
 
 | Credential field | Env var | Routed to |
 |---|---|---|
@@ -82,25 +82,7 @@ A field left empty (`""`) with no group `secret` renders nothing — use a phase
 
 > `starrocks.username`/`password` are needed **only** when `register.enabled` and
 > `starrocks.autocomplete: true`. With `register.enabled: false` or `autocomplete: false`, leave them
-> empty (`{}`) — nothing is rendered.
-
-Point every field at one Secret (with the keys above) or spread them across several — the chart only
-references the specific keys each phase needs, so least-privilege is preserved automatically:
-
-```yaml
-db:
-  host: my-postgres:5432
-  password:    { secret: { name: ranger-credentials, key: db-password } }
-accounts:
-  admin:       { secret: { name: ranger-credentials, key: admin-password } }
-  keyadmin:    { secret: { name: ranger-credentials, key: keyadmin-password } }
-  tagsync:     { secret: { name: ranger-credentials, key: tagsync-password } }
-  usersync:    { secret: { name: ranger-credentials, key: usersync-password } }
-starrocks:
-  jdbcUrl:  jdbc:mysql://starrocks:9030
-  username: { secret: { name: ranger-starrocks, key: username } }
-  password: { secret: { name: ranger-starrocks, key: password } }
-```
+> empty — nothing is rendered.
 
 For anything outside this set, each phase still has generic `extraEnv` (raw `EnvVar` objects) and
 `extraEnvFrom` (bulk `secretRef` / `configMapRef`) escape hatches.
@@ -112,7 +94,7 @@ helm install ranger backend/ranger/helm/ \
   --set image.repository=ghcr.io/org/ranger \
   --set image.tag=2.8.0 \
   --set db.host=my-postgres:5432 \
-  --set ranger.policyMgrExternalUrl=https://ranger.internal \
+  --set ranger.externalUrl=https://ranger.internal \
   --set starrocks.jdbcUrl=jdbc:mysql://starrocks:9030 \
   -f my-secrets-values.yaml \
   --wait --atomic
@@ -162,23 +144,31 @@ serve:
 
 ## Ingress
 
-The `serve` admin (port 6080) can be exposed via an Ingress. Override `ingressClassName`,
-`path`/`pathType`, ingress-level `annotations`, and the `hosts` list (each host can opt into TLS):
+The `serve` admin (port 6080) can be exposed via an Ingress. When `serve.ingress.enabled` is true,
+the ingress host defaults to the hostname extracted from `ranger.externalUrl` (scheme and port
+stripped). Override with an explicit `serve.ingress.hosts` list when you need TLS or multiple hosts.
+
+```yaml
+ranger:
+  externalUrl: https://ranger.dev.example.com
+
+serve:
+  ingress:
+    enabled: true          # host derived from externalUrl automatically: ranger.dev.example.com
+    ingressClassName: alb
+    annotations:
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/healthcheck-path: /login.jsp
+```
+
+To add TLS or override the host, set `serve.ingress.hosts` explicitly — it takes precedence over the
+derived host:
 
 ```yaml
 serve:
   ingress:
     enabled: true
     ingressClassName: alb
-    # Prefix (not the chart default ImplementationSpecific): the AWS ALB controller turns
-    # pathType Prefix "/" into the path-pattern "/*", so static assets route to the admin
-    # too. ImplementationSpecific "/" matches only "/" exactly -> the UI bundle 404s.
-    path: /
-    pathType: Prefix
-    annotations:
-      alb.ingress.kubernetes.io/target-type: ip
-      alb.ingress.kubernetes.io/healthcheck-path: /login.jsp
-      alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
     hosts:
       - name: ranger.dev.example.com
         tls:
@@ -186,9 +176,9 @@ serve:
           secretName: ranger-tls
 ```
 
-A `tls` block is emitted only for hosts that set `tls.enabled: true`. The Ingress always targets the
-chart's `serve` Service on `serve.service.port`. No Ingress is rendered unless both `serve.enabled` and
-`serve.ingress.enabled` are true.
+A `tls` block is emitted only for hosts that set `tls.enabled: true`. TLS is only supported for
+explicit hosts (the derived host has no `secretName`). No Ingress is rendered unless both
+`serve.enabled` and `serve.ingress.enabled` are true.
 
 ## Configuration
 
@@ -197,22 +187,25 @@ chart's `serve` Service on `serve.service.port`. No Ingress is rendered unless b
 | `image.repository` | `""` | Image repo (required). |
 | `image.tag` | `latest` | Image tag. |
 | `image.pullPolicy` | `IfNotPresent` | Pull policy. |
-| `db.host` | `""` | PostgreSQL `host:port` (required). |
-| `db.name` | `ranger` | Database name (pre-created). |
-| `db.user` | `rangeradmin` | Runtime DB role. |
-| `db.rootUser` | `rangeradmin` | Root DB user (unused under SeparateDBA). |
-| `db.secret` | `""` | Default Secret name for the `db.*` credentials (keys default to the env-var name). |
-| `db.password` | `{}` | Credential source for `RANGER_DB_PASSWORD` (migrate + serve). |
-| `db.rootPassword` | `{}` | Credential source for `RANGER_DB_ROOT_PASSWORD` (migrate; optional; not auto-pulled by `db.secret`). |
-| `accounts.secret` | `""` | Default Secret name for the `accounts.*` credentials. |
-| `accounts.{admin,keyadmin,tagsync,usersync}` | `{}` | Credential source per Ranger account password (see [Secrets](#secrets)). |
-| `ranger.policyMgrExternalUrl` | `http://ranger:6080` | External admin URL advertised in config. |
-| `starrocks.autocomplete` | `true` | `true` enables the StarRocks plugin class (UI Test Connection / autocomplete) and requires the creds below; rendered as `RANGER_STARROCKS_AUTOCOMPLETE=yes`/`no`. |
-| `starrocks.serviceName` | `starrocks` | Registered service-instance name. |
-| `starrocks.jdbcUrl` | `""` | StarRocks JDBC URL for the registered service. |
-| `starrocks.secret` | `""` | Default Secret name for the `starrocks.*` credentials. |
-| `starrocks.username` | `{}` | Credential source for `RANGER_STARROCKS_USERNAME` (register; needed only when `register.enabled` and `autocomplete`). |
-| `starrocks.password` | `{}` | Credential source for `RANGER_STARROCKS_PASSWORD` (register; needed only when `register.enabled` and `autocomplete`). |
+| `ranger.externalUrl` | `""` | External admin URL — sets `RANGER_POLICYMGR_EXTERNAL_URL` and is used as the default ingress host (scheme + port stripped). |
+| `db.host` | `""` | PostgreSQL `host:port`. Literal or sourced (see [Secrets](#secrets)). |
+| `db.name` | `ranger` | Database name (pre-created). Literal or sourced. |
+| `db.user` | `rangeradmin` | Runtime DB role. Literal or sourced. |
+| `db.rootUser` | `rangeradmin` | Root DB user (unused under SeparateDBA). Literal or sourced. |
+| `db.secret` | `""` | Default Secret name for all empty `db.*` fields (keys default to the env-var name). |
+| `db.password` | `""` | `RANGER_DB_PASSWORD` → migrate + serve. |
+| `db.rootPassword` | `""` | `RANGER_DB_ROOT_PASSWORD` → migrate (optional; not auto-pulled by `db.secret`). |
+| `accounts.secret` | `""` | Default Secret name for all empty `accounts.*` fields. |
+| `accounts.admin` | `""` | `RANGER_ADMIN_PASSWORD` → migrate + register. |
+| `accounts.keyadmin` | `""` | `RANGER_KEYADMIN_PASSWORD` → migrate. |
+| `accounts.tagsync` | `""` | `RANGER_TAGSYNC_PASSWORD` → migrate. |
+| `accounts.usersync` | `""` | `RANGER_USERSYNC_PASSWORD` → migrate. |
+| `starrocks.autocomplete` | `true` | Boolean — `true` renders `RANGER_STARROCKS_AUTOCOMPLETE=yes` and requires `username`/`password`. |
+| `starrocks.serviceName` | `starrocks` | `RANGER_STARROCKS_SERVICE_NAME`. Literal or sourced. |
+| `starrocks.jdbcUrl` | `""` | `RANGER_STARROCKS_JDBC_URL`. Literal or sourced. |
+| `starrocks.secret` | `""` | Default Secret name for all empty `starrocks.*` fields. |
+| `starrocks.username` | `""` | `RANGER_STARROCKS_USERNAME` → register (required when `autocomplete`). |
+| `starrocks.password` | `""` | `RANGER_STARROCKS_PASSWORD` → register (required when `autocomplete`). |
 | `migrate.enabled` | `true` | Render the migrate Job. |
 | `migrate.backoffLimit` | `3` | Job retries. |
 | `migrate.ttlSecondsAfterFinished` | `300` | Auto-cleanup after completion. |
@@ -229,20 +222,21 @@ chart's `serve` Service on `serve.service.port`. No Ingress is rendered unless b
 | `serve.ingress.path` | `/` | Path for every host rule. |
 | `serve.ingress.pathType` | `Prefix` | Path type for every host rule. |
 | `serve.ingress.annotations` | `{}` | Ingress-level annotations (controller-specific). |
-| `serve.ingress.hosts` | `[]` | List of `{ name, tls: { enabled, secretName } }`. |
+| `serve.ingress.hosts` | `[]` | Explicit host list `{ name, tls: { enabled, secretName } }`. Overrides the host derived from `ranger.externalUrl`. |
 | `register.enabled` | `true` | Render the register Job. |
 | `register.backoffLimit` | `6` | Job retries (until admin answers). |
 | `register.ttlSecondsAfterFinished` | `300` | Auto-cleanup after completion. |
-| `register.adminUrl` | `http://ranger:6080` | Admin REST URL the register Job targets. |
+| `register.adminUrl` | `http://ranger:6080` | Internal admin REST URL the register Job targets. |
 | `register.adminUser` | `admin` | Admin username. |
 | `<phase>.extraEnv` | `[]` | Escape hatch: individual env vars (raw `EnvVar` objects) per phase. |
-| `<phase>.extraEnvFrom` | `[]` | Escape hatch: bulk env sources (`secretRef` / `configMapRef`) per phase, for config outside the typed `db`/`accounts`/`starrocks` fields. |
+| `<phase>.extraEnvFrom` | `[]` | Escape hatch: bulk env sources (`secretRef` / `configMapRef`) per phase. |
 
 ## Testing
 
 Unit tests (no cluster required) live in `tests/` and use the
-[`helm-unittest`](https://github.com/helm-unittest/helm-unittest) plugin. They cover the phase toggles,
-command/hook wiring, per-phase secret isolation, and the optional init-container/volume/env blocks.
+[`helm-unittest`](https://github.com/helm-unittest/helm-unittest) plugin. They cover phase toggles,
+command/hook wiring, credential routing per phase, ingress host derivation, and the optional
+init-container/volume/env blocks.
 
 ```bash
 helm plugin install https://github.com/helm-unittest/helm-unittest --version v1.1.0 --verify=false
