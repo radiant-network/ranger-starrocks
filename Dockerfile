@@ -19,7 +19,11 @@
 #   RANGER_STARROCKS_SERVICE_NAME  name of the registered service instance (default starrocks).
 #
 # Build context is the repo root; image assets live under image/.
-FROM apache/ranger:2.8.0
+#
+# RANGER_VERSION is the single source for the base Ranger version. CI passes it via --build-arg
+# (it also prefixes the published image/chart version); the default keeps local builds working.
+ARG RANGER_VERSION=2.8.0
+FROM apache/ranger:${RANGER_VERSION}
 
 COPY image/install.properties.tpl /home/ranger/scripts/install.properties.tpl
 COPY image/ranger-entrypoint.sh   /home/ranger/scripts/ranger-entrypoint.sh
