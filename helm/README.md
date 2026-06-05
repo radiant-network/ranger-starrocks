@@ -59,15 +59,13 @@ if you need it.)
 "literal-or-sourced":
 
 ```yaml
-<literal>                                          # plain value (e.g. db.host: my-pg:5432)
-value:     "<literal>"                             # plain value (explicit)
-secret:    { name: <secret>,    key: <key> }       # -> valueFrom.secretKeyRef (name/key fall back to the group secret / env-var name)
-configMap: { name: <configmap>, key: <key> }       # -> valueFrom.configMapKeyRef
+secret:    { name: <secret>,    key: <key> }   # -> valueFrom.secretKeyRef (name/key fall back to group secret / env-var name)
+configMap: { name: <configmap>, key: <key> }   # -> valueFrom.configMapKeyRef
+value:     "<literal>"                         # -> plain value
 ```
 
-So you can pull the DB host from a Secret too, e.g. `db.host: { secret: { key: RANGER_DB_HOST } }`,
-or just set `db.secret` and leave `db.host` empty. A field left empty (`{}`/`""`) with no group
-`secret` renders nothing — use a phase's `extraEnv` / `extraEnvFrom` escape hatch for those.
+A field left empty (`""`) with no group `secret` renders nothing — use a phase's `extraEnv` /
+`extraEnvFrom` escape hatch for those.
 
 | Credential field | Env var | Routed to |
 |---|---|---|
