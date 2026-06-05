@@ -16,11 +16,11 @@ image:
 # Every field under db / accounts / starrocks is "literal-or-sourced" — set it one of these ways
 # (mixable across fields):
 #
-#   <literal>                                          # plain value (e.g. db.host: my-pg:5432)
-#   { value: <literal> }                               # plain value (explicit)
 #   { secret:    { name?: <secret>, key?: <key> } }    # -> valueFrom.secretKeyRef
 #   { configMap: { name: <cm>,      key: <key> } }     # -> valueFrom.configMapKeyRef
-#   {} / "" (empty)                                    # pulled from the group secret (below), else nothing
+#   { value: "<literal>" }                             # -> plain value (explicit map form)
+#   <bare-scalar>                                      # -> plain value
+#   "" (empty)                                         # pulled from the group secret (below), else nothing
 #
 # Group default: set `<group>.secret: <name>` once and any EMPTY field in that group is read from
 # that Secret using a default key equal to the ENV VAR NAME (RANGER_DB_PASSWORD, RANGER_DB_HOST, ...).
@@ -34,16 +34,16 @@ db:
   user: rangeradmin
   rootUser: rangeradmin          # unused under SeparateDBA; routed to migrate only
   secret: ""                     # default Secret name for the db.* credentials below
-  password: {}                   # RANGER_DB_PASSWORD       -> migrate + serve
-  rootPassword: {}               # RANGER_DB_ROOT_PASSWORD  -> migrate (optional; no group default)
+  password: ""                   # RANGER_DB_PASSWORD       -> migrate + serve
+  rootPassword: ""               # RANGER_DB_ROOT_PASSWORD  -> migrate (optional; no group default)
 
 # One credential source per Ranger account password.
 accounts:
   secret: ""                     # default Secret name for the accounts.* credentials below
-  admin: {}                      # RANGER_ADMIN_PASSWORD    -> migrate + register
-  keyadmin: {}                   # RANGER_KEYADMIN_PASSWORD -> migrate
-  tagsync: {}                    # RANGER_TAGSYNC_PASSWORD  -> migrate
-  usersync: {}                   # RANGER_USERSYNC_PASSWORD -> migrate
+  admin: ""                      # RANGER_ADMIN_PASSWORD    -> migrate + register
+  keyadmin: ""                   # RANGER_KEYADMIN_PASSWORD -> migrate
+  tagsync: ""                    # RANGER_TAGSYNC_PASSWORD  -> migrate
+  usersync: ""                   # RANGER_USERSYNC_PASSWORD -> migrate
 
 ranger:
   policyMgrExternalUrl: "http://ranger:6080"
@@ -57,8 +57,8 @@ starrocks:
   jdbcUrl: ""                    # RANGER_STARROCKS_JDBC_URL     -> register (literal or sourced)
   secret: ""                     # default Secret name for all starrocks.* fields below
   # Required only when register is enabled AND autocomplete is true.
-  username: {}                   # RANGER_STARROCKS_USERNAME -> register
-  password: {}                   # RANGER_STARROCKS_PASSWORD -> register
+  username: ""                   # RANGER_STARROCKS_USERNAME -> register
+  password: ""                   # RANGER_STARROCKS_PASSWORD -> register
 
 migrate:
   enabled: true
