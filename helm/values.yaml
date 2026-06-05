@@ -1,3 +1,7 @@
+# Chart is published as `apache-ranger-starrocks` (matching the image), but resources keep the
+# short `ranger` name so the default http://ranger:6080 service URLs below still resolve.
+nameOverride: ranger
+
 image:
   repository: ""
   tag: "latest"

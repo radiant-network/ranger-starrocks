@@ -95,4 +95,4 @@ jobs:
           set -euo pipefail
           helm package helm/ --version "$VERSION" --app-version "$RANGER_VERSION" -d dist/
           helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin <<<"${{ secrets.GITHUB_TOKEN }}"
-          helm push "dist/ranger-${VERSION}.tgz" "$CHART_REPO"
+          helm push "dist/apache-ranger-starrocks-${VERSION}.tgz" "$CHART_REPO"
