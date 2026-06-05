@@ -7,18 +7,59 @@ image:
   tag: "latest"
   pullPolicy: IfNotPresent
 
+# ----------------------------------------------------------------------------------------------
+# Credentials
+#
+# The chart manages no Secrets — you pre-create them. The chart routes each credential to ONLY the
+# phases that need it (migrate / serve / register), so you never wire phases yourself.
+#
+# Two ways to supply a credential, mixable:
+#
+# 1. Group default (terse). Set `<group>.secret: <secret-name>` once; every credential in that
+#    group is read from that Secret using a default key equal to the ENV VAR NAME — so the Secret
+#    must contain keys like RANGER_DB_PASSWORD, RANGER_ADMIN_PASSWORD, etc. (the same Secret then
+#    also works for a raw extraEnvFrom import).
+#
+# 2. Per-field source (explicit, overrides the group). Each credential field takes one of:
+#       secret:    { name: <secret-name>,     key: <key> }   # name falls back to <group>.secret
+#       configMap: { name: <configmap-name>,  key: <key> }
+#       value:     "<literal>"                                # plain value (non-prod / testing)
+#       "<key>"                                               # shorthand: key in <group>.secret
+#
+# A field left empty ({}) with no group secret renders nothing (supply it via a phase's
+# extraEnv/extraEnvFrom escape hatch instead).
+# ----------------------------------------------------------------------------------------------
 db:
   host: ""
   name: ranger
   user: rangeradmin
+  rootUser: rangeradmin          # unused under SeparateDBA; routed to migrate only
+  secret: ""                     # default Secret name for the db.* credentials below
+  password: {}                   # RANGER_DB_PASSWORD       -> migrate + serve
+  rootPassword: {}               # RANGER_DB_ROOT_PASSWORD  -> migrate (optional; no group default)
+
+# One credential source per Ranger account password.
+accounts:
+  secret: ""                     # default Secret name for the accounts.* credentials below
+  admin: {}                      # RANGER_ADMIN_PASSWORD    -> migrate + register
+  keyadmin: {}                   # RANGER_KEYADMIN_PASSWORD -> migrate
+  tagsync: {}                    # RANGER_TAGSYNC_PASSWORD  -> migrate
+  usersync: {}                   # RANGER_USERSYNC_PASSWORD -> migrate
 
 ranger:
   policyMgrExternalUrl: "http://ranger:6080"
 
 starrocks:
-  autocomplete: "yes"
+  # true  -> RANGER_STARROCKS_AUTOCOMPLETE=yes: enables the StarRocks plugin class (UI Test
+  #          Connection / resource autocomplete) and REQUIRES the username/password below.
+  # false -> base class, no probing; username/password are optional.
+  autocomplete: true
   serviceName: "starrocks"
   jdbcUrl: ""
+  secret: ""                     # default Secret name for the starrocks.* credentials below
+  # Required only when register is enabled AND autocomplete is true.
+  username: {}                   # RANGER_STARROCKS_USERNAME -> register
+  password: {}                   # RANGER_STARROCKS_PASSWORD -> register
 
 migrate:
   enabled: true

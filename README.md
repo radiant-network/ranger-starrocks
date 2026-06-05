@@ -53,6 +53,11 @@ The StarRocks connection (`RANGER_STARROCKS_USERNAME` / `RANGER_STARROCKS_PASSWO
 
 ## Environment variables
 
+> These are the env vars the **image** consumes. Under the Helm chart you don't set them directly —
+> you declare connection config and credentials once via the typed `db` / `accounts` / `starrocks`
+> values (each credential sourced from a Secret/ConfigMap key) and the chart routes each var into the
+> phases that need it. See [`helm/README.md`](helm/README.md#secrets).
+
 ### Ranger DB (managed Postgres; `SeparateDBA` — DB + role pre-created out of band)
 
 | Var | Purpose |
