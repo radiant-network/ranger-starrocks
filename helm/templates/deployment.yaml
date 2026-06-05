@@ -31,7 +31,7 @@ spec:
               containerPort: 6080
               protocol: TCP
           env:
-            {{- include "ranger.serveEnv" . | nindent 12 }}
+            {{- include "ranger.serveEnv" . | trimPrefix "\n" | nindent 12 }}
             {{- if .Values.serve.extraEnv }}
             {{- toYaml .Values.serve.extraEnv | nindent 12 }}
             {{- end }}

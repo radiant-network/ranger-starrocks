@@ -182,6 +182,61 @@ tests:
           path: spec.template.spec.containers[0].env[?(@.name=="RANGER_STARROCKS_AUTOCOMPLETE")].value
           value: "no"
 
+  - it: connection fields render as literal values by default
+    template: migrate-job.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_DB_HOST")].value
+          value: postgres:5432
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_DB_USER")].value
+          value: rangeradmin
+
+  - it: connection fields can be sourced from a Secret (explicit per-field)
+    template: deployment.yaml
+    set:
+      db.host:
+        secret: { name: ranger-conn, key: db-host }
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_DB_HOST")].valueFrom.secretKeyRef.name
+          value: ranger-conn
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_DB_HOST")].value
+
+  - it: starrocks jdbcUrl and serviceName render as literals by default
+    template: register-job.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_STARROCKS_SERVICE_NAME")].value
+          value: starrocks
+
+  - it: starrocks jdbcUrl can be sourced from a Secret via starrocks.secret group
+    template: register-job.yaml
+    set:
+      starrocks.jdbcUrl: ""
+      starrocks.secret: ranger-sr
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_STARROCKS_JDBC_URL")].valueFrom.secretKeyRef.name
+          value: ranger-sr
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_STARROCKS_JDBC_URL")].valueFrom.secretKeyRef.key
+          value: RANGER_STARROCKS_JDBC_URL
+
+  - it: an empty connection field is pulled from the group secret with the env-var-name key
+    template: migrate-job.yaml
+    set:
+      db.host: ""
+      db.secret: ranger-db
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_DB_HOST")].valueFrom.secretKeyRef.name
+          value: ranger-db
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_DB_HOST")].valueFrom.secretKeyRef.key
+          value: RANGER_DB_HOST
+
   - it: a group secret fills empty credentials using the env-var name as the default key
     template: migrate-job.yaml
     set:

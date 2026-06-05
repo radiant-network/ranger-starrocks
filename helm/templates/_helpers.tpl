@@ -44,31 +44,24 @@ Image reference shared by all three phases.
 {{- end }}
 
 {{/*
-Render one env entry from a credential source, with a group-level default Secret name and a
-default key. Takes (dict "name" <ENV> "spec" <field> "secret" <group-secret> "key" <default-key>).
+Render one env entry that is either a literal value or sourced from a Secret/ConfigMap, with a
+group-level default Secret name and a default key.
+Takes (dict "name" <ENV> "spec" <field> "secret" <group-secret> "key" <default-key>).
 
 <field> resolves as:
-  - "literal-key" (string)        -> secretKeyRef { name: <group-secret>, key: literal-key }
+  - "literal" (non-empty scalar)  -> plain value
   - { value: x }                  -> plain value
   - { configMap: { name, key } }  -> configMapKeyRef
-  - { secret: { name?, key } }    -> secretKeyRef (name falls back to <group-secret>)
-  - {} / unset                    -> secretKeyRef { <group-secret>, <default-key> } if both set,
+  - { secret: { name?, key? } }   -> secretKeyRef (name/key fall back to <group-secret>/<default-key>)
+  - {} / "" / unset               -> secretKeyRef { <group-secret>, <default-key> } if both set,
                                      else nothing.
 */}}
 {{- define "ranger.credEnv" -}}
 {{- $name := .name -}}
 {{- $gsecret := .secret | default "" -}}
 {{- $dkey := .key | default "" -}}
-{{- if kindIs "string" .spec -}}
-{{- if .spec }}
-- name: {{ $name }}
-  valueFrom:
-    secretKeyRef:
-      name: {{ $gsecret | quote }}
-      key: {{ .spec | quote }}
-{{- end }}
-{{- else -}}
-{{- $s := .spec | default dict -}}
+{{- if kindIs "map" .spec -}}
+{{- $s := .spec -}}
 {{- if $s.value }}
 - name: {{ $name }}
   value: {{ $s.value | quote }}
@@ -83,7 +76,7 @@ default key. Takes (dict "name" <ENV> "spec" <field> "secret" <group-secret> "ke
   valueFrom:
     secretKeyRef:
       name: {{ $s.secret.name | default $gsecret | quote }}
-      key: {{ $s.secret.key | quote }}
+      key: {{ $s.secret.key | default $dkey | quote }}
 {{- else if and $gsecret $dkey }}
 - name: {{ $name }}
   valueFrom:
@@ -91,6 +84,15 @@ default key. Takes (dict "name" <ENV> "spec" <field> "secret" <group-secret> "ke
       name: {{ $gsecret | quote }}
       key: {{ $dkey | quote }}
 {{- end }}
+{{- else if .spec }}
+- name: {{ $name }}
+  value: {{ .spec | quote }}
+{{- else if and $gsecret $dkey }}
+- name: {{ $name }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $gsecret | quote }}
+      key: {{ $dkey | quote }}
 {{- end -}}
 {{- end }}
 
@@ -99,14 +101,10 @@ Env block for the migrate Job: DB connection + every credential migrate populate
 Routed credentials: DB password (+ root), all four account passwords.
 */}}
 {{- define "ranger.migrateEnv" -}}
-- name: RANGER_DB_HOST
-  value: {{ .Values.db.host | quote }}
-- name: RANGER_DB_NAME
-  value: {{ .Values.db.name | quote }}
-- name: RANGER_DB_USER
-  value: {{ .Values.db.user | quote }}
-- name: RANGER_DB_ROOT_USER
-  value: {{ .Values.db.rootUser | quote }}
+{{- include "ranger.credEnv" (dict "name" "RANGER_DB_HOST" "spec" .Values.db.host "secret" .Values.db.secret "key" "RANGER_DB_HOST") -}}
+{{- include "ranger.credEnv" (dict "name" "RANGER_DB_NAME" "spec" .Values.db.name "secret" .Values.db.secret "key" "RANGER_DB_NAME") }}
+{{- include "ranger.credEnv" (dict "name" "RANGER_DB_USER" "spec" .Values.db.user "secret" .Values.db.secret "key" "RANGER_DB_USER") }}
+{{- include "ranger.credEnv" (dict "name" "RANGER_DB_ROOT_USER" "spec" .Values.db.rootUser "secret" .Values.db.secret "key" "RANGER_DB_ROOT_USER") }}
 {{- include "ranger.credEnv" (dict "name" "RANGER_DB_PASSWORD" "spec" .Values.db.password "secret" .Values.db.secret "key" "RANGER_DB_PASSWORD") }}
 {{- include "ranger.credEnv" (dict "name" "RANGER_DB_ROOT_PASSWORD" "spec" .Values.db.rootPassword "secret" .Values.db.secret) }}
 {{- include "ranger.credEnv" (dict "name" "RANGER_ADMIN_PASSWORD" "spec" .Values.accounts.admin "secret" .Values.accounts.secret "key" "RANGER_ADMIN_PASSWORD") }}
@@ -120,12 +118,9 @@ Env block for the serve Deployment: DB connection + DB password only (user auth 
 against the DB that migrate populated).
 */}}
 {{- define "ranger.serveEnv" -}}
-- name: RANGER_DB_HOST
-  value: {{ .Values.db.host | quote }}
-- name: RANGER_DB_NAME
-  value: {{ .Values.db.name | quote }}
-- name: RANGER_DB_USER
-  value: {{ .Values.db.user | quote }}
+{{- include "ranger.credEnv" (dict "name" "RANGER_DB_HOST" "spec" .Values.db.host "secret" .Values.db.secret "key" "RANGER_DB_HOST") -}}
+{{- include "ranger.credEnv" (dict "name" "RANGER_DB_NAME" "spec" .Values.db.name "secret" .Values.db.secret "key" "RANGER_DB_NAME") }}
+{{- include "ranger.credEnv" (dict "name" "RANGER_DB_USER" "spec" .Values.db.user "secret" .Values.db.secret "key" "RANGER_DB_USER") }}
 - name: RANGER_POLICYMGR_EXTERNAL_URL
   value: {{ .Values.ranger.policyMgrExternalUrl | quote }}
 - name: RANGER_REGISTER_ON_SERVE
@@ -141,12 +136,10 @@ Env block for the register Job: admin endpoint/creds + StarRocks config and cred
   value: {{ .Values.register.adminUrl | quote }}
 - name: RANGER_ADMIN_USER
   value: {{ .Values.register.adminUser | quote }}
-- name: RANGER_STARROCKS_JDBC_URL
-  value: {{ .Values.starrocks.jdbcUrl | quote }}
-- name: RANGER_STARROCKS_SERVICE_NAME
-  value: {{ .Values.starrocks.serviceName | quote }}
 - name: RANGER_STARROCKS_AUTOCOMPLETE
   value: {{ ternary "yes" "no" .Values.starrocks.autocomplete | quote }}
+{{- include "ranger.credEnv" (dict "name" "RANGER_STARROCKS_JDBC_URL" "spec" .Values.starrocks.jdbcUrl "secret" .Values.starrocks.secret "key" "RANGER_STARROCKS_JDBC_URL") }}
+{{- include "ranger.credEnv" (dict "name" "RANGER_STARROCKS_SERVICE_NAME" "spec" .Values.starrocks.serviceName "secret" .Values.starrocks.secret "key" "RANGER_STARROCKS_SERVICE_NAME") }}
 {{- include "ranger.credEnv" (dict "name" "RANGER_ADMIN_PASSWORD" "spec" .Values.accounts.admin "secret" .Values.accounts.secret "key" "RANGER_ADMIN_PASSWORD") }}
 {{- include "ranger.credEnv" (dict "name" "RANGER_STARROCKS_USERNAME" "spec" .Values.starrocks.username "secret" .Values.starrocks.secret "key" "RANGER_STARROCKS_USERNAME") }}
 {{- include "ranger.credEnv" (dict "name" "RANGER_STARROCKS_PASSWORD" "spec" .Values.starrocks.password "secret" .Values.starrocks.secret "key" "RANGER_STARROCKS_PASSWORD") }}

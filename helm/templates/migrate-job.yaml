@@ -28,7 +28,7 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["migrate"]
           env:
-            {{- include "ranger.migrateEnv" . | nindent 12 }}
+            {{- include "ranger.migrateEnv" . | trimPrefix "\n" | nindent 12 }}
             {{- if .Values.migrate.extraEnv }}
             {{- toYaml .Values.migrate.extraEnv | nindent 12 }}
             {{- end }}
