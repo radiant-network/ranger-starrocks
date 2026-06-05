@@ -1,0 +1,8 @@
+# Keep the build context small and stable: only image/ + Dockerfile feed the build.
+.git
+.github
+helm
+dist
+*.md
+compose.yaml
+LICENSE
