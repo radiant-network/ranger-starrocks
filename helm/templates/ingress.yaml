@@ -2,6 +2,7 @@
 {{- $fullName := include "ranger.fullname" . }}
 {{- $svcPort := .Values.serve.service.port }}
 {{- $ingress := .Values.serve.ingress }}
+{{- $derivedHost := include "ranger.derivedIngressHost" . | trim }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -17,6 +18,8 @@ spec:
   {{- with $ingress.ingressClassName }}
   ingressClassName: {{ . }}
   {{- end }}
+  {{- /* TLS only applies to explicit hosts (derived host has no secret name). */}}
+  {{- if $ingress.hosts }}
   {{- $tlsHosts := list }}
   {{- range $ingress.hosts }}
     {{- if and .tls .tls.enabled }}
@@ -33,9 +36,23 @@ spec:
       {{- end }}
     {{- end }}
   {{- end }}
+  {{- end }}
   rules:
+    {{- if $ingress.hosts }}
     {{- range $ingress.hosts }}
     - host: {{ .name | quote }}
+      http:
+        paths:
+          - path: {{ $ingress.path }}
+            pathType: {{ $ingress.pathType }}
+            backend:
+              service:
+                name: {{ $fullName }}
+                port:
+                  number: {{ $svcPort }}
+    {{- end }}
+    {{- else if $derivedHost }}
+    - host: {{ $derivedHost | quote }}
       http:
         paths:
           - path: {{ $ingress.path }}

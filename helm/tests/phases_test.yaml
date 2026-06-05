@@ -10,6 +10,7 @@ templates:
 set:
   image.repository: ranger-dual-mode
   db.host: postgres:5432
+  ranger.externalUrl: "https://ranger.internal.example.com"
   db.password:
     secret: { name: ranger, key: db-password }
   accounts.admin:
@@ -69,14 +70,14 @@ tests:
     template: migrate-job.yaml
     asserts:
       - equal:
-          path: spec.template.spec.containers[0].command
+          path: spec.template.spec.containers[0].args
           value: ["migrate"]
 
   - it: serve runs the serve command and is not a hook
     template: deployment.yaml
     asserts:
       - equal:
-          path: spec.template.spec.containers[0].command
+          path: spec.template.spec.containers[0].args
           value: ["serve"]
       - isNull:
           path: metadata.annotations
@@ -85,7 +86,7 @@ tests:
     template: register-job.yaml
     asserts:
       - equal:
-          path: spec.template.spec.containers[0].command
+          path: spec.template.spec.containers[0].args
           value: ["register"]
       - equal:
           path: metadata.annotations["helm.sh/hook"]
@@ -371,10 +372,30 @@ tests:
     set:
       serve.enabled: false
       serve.ingress.enabled: true
-      serve.ingress.hosts:
-        - name: ranger.example.com
     asserts:
       - hasDocuments: { count: 0 }
+
+  - it: derives the ingress host from externalUrl when no explicit hosts are set
+    template: ingress.yaml
+    set:
+      serve.ingress.enabled: true
+    asserts:
+      - isKind: { of: Ingress }
+      - equal:
+          path: spec.rules[0].host
+          value: ranger.internal.example.com
+
+  - it: explicit serve.ingress.hosts overrides the derived host
+    template: ingress.yaml
+    set:
+      serve.ingress.enabled: true
+      serve.ingress.hosts:
+        - name: ranger.override.com
+    asserts:
+      - equal:
+          path: spec.rules[0].host
+          value: ranger.override.com
+      - lengthEqual: { path: spec.rules, count: 1 }
 
   - it: renders an Ingress routing to the serve Service with overrides honored
     template: ingress.yaml

@@ -75,13 +75,13 @@ The StarRocks connection (`RANGER_STARROCKS_USERNAME` / `RANGER_STARROCKS_PASSWO
 
 | Var | Default | Purpose |
 |---|---|---|
-| `RANGER_POLICYMGR_EXTERNAL_URL` | `http://localhost:6080` | External base URL the admin advertises (rendered into `ranger-admin-site.xml`); **not** the bind address. Set to the real externally-reachable URL (k8s service / ingress) in production. |
+| `RANGER_POLICYMGR_EXTERNAL_URL` | `http://localhost:6080` | External base URL the admin advertises (rendered into `ranger-admin-site.xml`); **not** the bind address. Set to the real externally-reachable URL (k8s service / ingress) in production. Under the Helm chart, set via `ranger.externalUrl`. |
 
 ### StarRocks
 
 | Var | Default | Purpose |
 |---|---|---|
-| `RANGER_STARROCKS_AUTOCOMPLETE` | `yes` | `yes` → enable plugin `implClass` (Test Connection / autocomplete); else empty. |
+| `RANGER_STARROCKS_AUTOCOMPLETE` | `yes` | `yes` → enable plugin `implClass` (Test Connection / autocomplete); else empty. Under the Helm chart, set via `starrocks.autocomplete` (boolean). |
 | `RANGER_STARROCKS_SERVICE_NAME` | `starrocks` | Name of the registered service instance (`type` stays `starrocks`). |
 | `RANGER_STARROCKS_USERNAME` | — | StarRocks user. **Only needed when autocomplete is `yes`.** |
 | `RANGER_STARROCKS_PASSWORD` | — | StarRocks password. **Only needed when autocomplete is `yes`.** |
