@@ -26,7 +26,10 @@ concurrency:
 
 env:
   RANGER_VERSION: "2.8.0"
-  IMAGE: ghcr.io/${{ github.repository }}
+  # Dedicated package name, decoupled from the repo name so it doesn't collide with the obsolete
+  # ghcr.io/radiant-network/ranger-starrocks package (owned by radiant-portal). CI creates this one
+  # fresh and the build's org.opencontainers.image.source label auto-links it to this repo.
+  IMAGE: ghcr.io/${{ github.repository_owner }}/apache-ranger-starrocks
   CHART_REPO: oci://ghcr.io/${{ github.repository_owner }}/charts
 
 jobs:
