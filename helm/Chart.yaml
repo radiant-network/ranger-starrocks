@@ -1,5 +1,5 @@
 apiVersion: v2
-name: ranger
+name: apache-ranger-starrocks
 description: Apache Ranger admin with 3-phase orchestration (migrate / serve / register)
 type: application
 version: 0.1.0
