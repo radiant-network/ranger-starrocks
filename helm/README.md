@@ -29,35 +29,80 @@ pre-hook: migrate (wait for Complete)
 
 ## Secrets
 
-**The chart manages no secrets.** It injects only non-sensitive config (DB host, URLs, flags) as plain
-env vars. All credentials are supplied by *you* via each phase's `extraEnvFrom` (a list of `secretRef`
-/ `configMapRef` sources). This keeps secrets external and lets each phase see only the keys it needs.
+**The chart manages no Secrets** — you pre-create them. You declare each credential **once** under
+`db` / `accounts` / `starrocks`, pointing it at an existing Secret (or ConfigMap) key, and the chart
+routes it into **only** the phases that need it. You never wire phases yourself, and credentials a
+phase doesn't need are never injected into it (e.g. the DB password never reaches `register`).
 
-Required secret keys **per phase** (the env-var names the image expects):
+There are two ways to supply credentials, and you can mix them.
 
-| Phase | Keys it needs |
-|---|---|
-| `migrate` | `RANGER_DB_PASSWORD`, `RANGER_DB_ROOT_PASSWORD` (unused under SeparateDBA), `RANGER_ADMIN_PASSWORD`, `RANGER_KEYADMIN_PASSWORD`, `RANGER_TAGSYNC_PASSWORD`, `RANGER_USERSYNC_PASSWORD` |
-| `serve` | `RANGER_DB_PASSWORD` |
-| `register` | `RANGER_ADMIN_PASSWORD`, `RANGER_STARROCKS_USERNAME`, `RANGER_STARROCKS_PASSWORD` |
+**1. Group default (terse).** Set `<group>.secret` once and every credential in that group is read
+from that Secret, using a default key equal to the **env-var name**:
+
+```yaml
+db:
+  host: my-postgres:5432
+  secret: ranger-db          # must contain key RANGER_DB_PASSWORD
+accounts:
+  secret: ranger-accounts    # keys RANGER_ADMIN_PASSWORD, RANGER_KEYADMIN_PASSWORD, ...
+starrocks:
+  jdbcUrl: jdbc:mysql://starrocks:9030
+  secret: ranger-starrocks   # keys RANGER_STARROCKS_USERNAME, RANGER_STARROCKS_PASSWORD
+```
+
+Because the default keys are the env-var names, the same Secret also works as a raw `extraEnvFrom`
+import. (`db.rootPassword` is optional and is **not** auto-pulled by `db.secret` — set it explicitly
+if you need it.)
+
+**2. Per-field source (explicit; overrides the group).** Each credential field takes one of:
+
+```yaml
+secret:    { name: <secret-name>,    key: <key> }   # -> valueFrom.secretKeyRef (name falls back to <group>.secret)
+configMap: { name: <configmap-name>, key: <key> }   # -> valueFrom.configMapKeyRef
+value:     "<literal>"                               # -> plain value (non-prod / testing only)
+"<key>"                                              # shorthand: that key in <group>.secret
+```
+
+A field left empty (`{}`, the default) with no group `secret` renders nothing — use it for
+credentials you'd rather supply via a phase's `extraEnv` / `extraEnvFrom` escape hatch.
+
+| Credential field | Env var | Routed to |
+|---|---|---|
+| `db.password` | `RANGER_DB_PASSWORD` | migrate, serve |
+| `db.rootPassword` | `RANGER_DB_ROOT_PASSWORD` (unused under SeparateDBA) | migrate |
+| `accounts.admin` | `RANGER_ADMIN_PASSWORD` | migrate, register |
+| `accounts.keyadmin` | `RANGER_KEYADMIN_PASSWORD` | migrate |
+| `accounts.tagsync` | `RANGER_TAGSYNC_PASSWORD` | migrate |
+| `accounts.usersync` | `RANGER_USERSYNC_PASSWORD` | migrate |
+| `starrocks.username` | `RANGER_STARROCKS_USERNAME` | register |
+| `starrocks.password` | `RANGER_STARROCKS_PASSWORD` | register |
 
 > Account passwords must be ≥8 chars with upper + lower + digit, or the migrate step fails.
 
-You can point all phases at one fat Secret or split them so each phase only mounts its slice
-(recommended — preserves the least-privilege design). `extraEnvFrom` is a list, so you can stack
-several `secretRef` / `configMapRef` sources; on key collision, later sources win.
+> `starrocks.username`/`password` are needed **only** when `register.enabled` and
+> `starrocks.autocomplete: true`. With `register.enabled: false` or `autocomplete: false`, leave them
+> empty (`{}`) — nothing is rendered.
+
+Point every field at one Secret (with the keys above) or spread them across several — the chart only
+references the specific keys each phase needs, so least-privilege is preserved automatically:
 
 ```yaml
-migrate:
-  extraEnvFrom:
-    - secretRef: { name: ranger-credentials }   # all 6 migrate keys
-serve:
-  extraEnvFrom:
-    - secretRef: { name: ranger-db-secret }      # RANGER_DB_PASSWORD only
-register:
-  extraEnvFrom:
-    - secretRef: { name: ranger-admin-secret }   # admin + starrocks creds
+db:
+  host: my-postgres:5432
+  password:    { secret: { name: ranger-credentials, key: db-password } }
+accounts:
+  admin:       { secret: { name: ranger-credentials, key: admin-password } }
+  keyadmin:    { secret: { name: ranger-credentials, key: keyadmin-password } }
+  tagsync:     { secret: { name: ranger-credentials, key: tagsync-password } }
+  usersync:    { secret: { name: ranger-credentials, key: usersync-password } }
+starrocks:
+  jdbcUrl:  jdbc:mysql://starrocks:9030
+  username: { secret: { name: ranger-starrocks, key: username } }
+  password: { secret: { name: ranger-starrocks, key: password } }
 ```
+
+For anything outside this set, each phase still has generic `extraEnv` (raw `EnvVar` objects) and
+`extraEnvFrom` (bulk `secretRef` / `configMapRef`) escape hatches.
 
 ## Installation
 
@@ -154,10 +199,19 @@ chart's `serve` Service on `serve.service.port`. No Ingress is rendered unless b
 | `db.host` | `""` | PostgreSQL `host:port` (required). |
 | `db.name` | `ranger` | Database name (pre-created). |
 | `db.user` | `rangeradmin` | Runtime DB role. |
+| `db.rootUser` | `rangeradmin` | Root DB user (unused under SeparateDBA). |
+| `db.secret` | `""` | Default Secret name for the `db.*` credentials (keys default to the env-var name). |
+| `db.password` | `{}` | Credential source for `RANGER_DB_PASSWORD` (migrate + serve). |
+| `db.rootPassword` | `{}` | Credential source for `RANGER_DB_ROOT_PASSWORD` (migrate; optional; not auto-pulled by `db.secret`). |
+| `accounts.secret` | `""` | Default Secret name for the `accounts.*` credentials. |
+| `accounts.{admin,keyadmin,tagsync,usersync}` | `{}` | Credential source per Ranger account password (see [Secrets](#secrets)). |
 | `ranger.policyMgrExternalUrl` | `http://ranger:6080` | External admin URL advertised in config. |
-| `starrocks.autocomplete` | `yes` | `yes` enables the StarRocks plugin class (UI Test Connection / autocomplete). |
+| `starrocks.autocomplete` | `true` | `true` enables the StarRocks plugin class (UI Test Connection / autocomplete) and requires the creds below; rendered as `RANGER_STARROCKS_AUTOCOMPLETE=yes`/`no`. |
 | `starrocks.serviceName` | `starrocks` | Registered service-instance name. |
 | `starrocks.jdbcUrl` | `""` | StarRocks JDBC URL for the registered service. |
+| `starrocks.secret` | `""` | Default Secret name for the `starrocks.*` credentials. |
+| `starrocks.username` | `{}` | Credential source for `RANGER_STARROCKS_USERNAME` (register; needed only when `register.enabled` and `autocomplete`). |
+| `starrocks.password` | `{}` | Credential source for `RANGER_STARROCKS_PASSWORD` (register; needed only when `register.enabled` and `autocomplete`). |
 | `migrate.enabled` | `true` | Render the migrate Job. |
 | `migrate.backoffLimit` | `3` | Job retries. |
 | `migrate.ttlSecondsAfterFinished` | `300` | Auto-cleanup after completion. |
@@ -180,8 +234,8 @@ chart's `serve` Service on `serve.service.port`. No Ingress is rendered unless b
 | `register.ttlSecondsAfterFinished` | `300` | Auto-cleanup after completion. |
 | `register.adminUrl` | `http://ranger:6080` | Admin REST URL the register Job targets. |
 | `register.adminUser` | `admin` | Admin username. |
-| `<phase>.extraEnv` | `[]` | Individual env vars (raw `EnvVar` objects) per phase. |
-| `<phase>.extraEnvFrom` | `[]` | Bulk env sources (`secretRef` / `configMapRef`) per phase — **how credentials are supplied**. |
+| `<phase>.extraEnv` | `[]` | Escape hatch: individual env vars (raw `EnvVar` objects) per phase. |
+| `<phase>.extraEnvFrom` | `[]` | Escape hatch: bulk env sources (`secretRef` / `configMapRef`) per phase, for config outside the typed `db`/`accounts`/`starrocks` fields. |
 
 ## Testing
 

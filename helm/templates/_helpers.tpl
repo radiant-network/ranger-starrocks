@@ -44,8 +44,59 @@ Image reference shared by all three phases.
 {{- end }}
 
 {{/*
-Non-secret env block for the migrate Job.
-Secrets (DB password, account passwords) must be supplied via migrate.extraEnvFrom.
+Render one env entry from a credential source, with a group-level default Secret name and a
+default key. Takes (dict "name" <ENV> "spec" <field> "secret" <group-secret> "key" <default-key>).
+
+<field> resolves as:
+  - "literal-key" (string)        -> secretKeyRef { name: <group-secret>, key: literal-key }
+  - { value: x }                  -> plain value
+  - { configMap: { name, key } }  -> configMapKeyRef
+  - { secret: { name?, key } }    -> secretKeyRef (name falls back to <group-secret>)
+  - {} / unset                    -> secretKeyRef { <group-secret>, <default-key> } if both set,
+                                     else nothing.
+*/}}
+{{- define "ranger.credEnv" -}}
+{{- $name := .name -}}
+{{- $gsecret := .secret | default "" -}}
+{{- $dkey := .key | default "" -}}
+{{- if kindIs "string" .spec -}}
+{{- if .spec }}
+- name: {{ $name }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $gsecret | quote }}
+      key: {{ .spec | quote }}
+{{- end }}
+{{- else -}}
+{{- $s := .spec | default dict -}}
+{{- if $s.value }}
+- name: {{ $name }}
+  value: {{ $s.value | quote }}
+{{- else if $s.configMap }}
+- name: {{ $name }}
+  valueFrom:
+    configMapKeyRef:
+      name: {{ $s.configMap.name | quote }}
+      key: {{ $s.configMap.key | quote }}
+{{- else if $s.secret }}
+- name: {{ $name }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $s.secret.name | default $gsecret | quote }}
+      key: {{ $s.secret.key | quote }}
+{{- else if and $gsecret $dkey }}
+- name: {{ $name }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $gsecret | quote }}
+      key: {{ $dkey | quote }}
+{{- end }}
+{{- end -}}
+{{- end }}
+
+{{/*
+Env block for the migrate Job: DB connection + every credential migrate populates.
+Routed credentials: DB password (+ root), all four account passwords.
 */}}
 {{- define "ranger.migrateEnv" -}}
 - name: RANGER_DB_HOST
@@ -54,11 +105,19 @@ Secrets (DB password, account passwords) must be supplied via migrate.extraEnvFr
   value: {{ .Values.db.name | quote }}
 - name: RANGER_DB_USER
   value: {{ .Values.db.user | quote }}
+- name: RANGER_DB_ROOT_USER
+  value: {{ .Values.db.rootUser | quote }}
+{{- include "ranger.credEnv" (dict "name" "RANGER_DB_PASSWORD" "spec" .Values.db.password "secret" .Values.db.secret "key" "RANGER_DB_PASSWORD") }}
+{{- include "ranger.credEnv" (dict "name" "RANGER_DB_ROOT_PASSWORD" "spec" .Values.db.rootPassword "secret" .Values.db.secret) }}
+{{- include "ranger.credEnv" (dict "name" "RANGER_ADMIN_PASSWORD" "spec" .Values.accounts.admin "secret" .Values.accounts.secret "key" "RANGER_ADMIN_PASSWORD") }}
+{{- include "ranger.credEnv" (dict "name" "RANGER_KEYADMIN_PASSWORD" "spec" .Values.accounts.keyadmin "secret" .Values.accounts.secret "key" "RANGER_KEYADMIN_PASSWORD") }}
+{{- include "ranger.credEnv" (dict "name" "RANGER_TAGSYNC_PASSWORD" "spec" .Values.accounts.tagsync "secret" .Values.accounts.secret "key" "RANGER_TAGSYNC_PASSWORD") }}
+{{- include "ranger.credEnv" (dict "name" "RANGER_USERSYNC_PASSWORD" "spec" .Values.accounts.usersync "secret" .Values.accounts.secret "key" "RANGER_USERSYNC_PASSWORD") }}
 {{- end }}
 
 {{/*
-Non-secret env block for the serve Deployment.
-Secrets (DB password) must be supplied via serve.extraEnvFrom.
+Env block for the serve Deployment: DB connection + DB password only (user auth resolves
+against the DB that migrate populated).
 */}}
 {{- define "ranger.serveEnv" -}}
 - name: RANGER_DB_HOST
@@ -71,11 +130,11 @@ Secrets (DB password) must be supplied via serve.extraEnvFrom.
   value: {{ .Values.ranger.policyMgrExternalUrl | quote }}
 - name: RANGER_REGISTER_ON_SERVE
   value: "false"
+{{- include "ranger.credEnv" (dict "name" "RANGER_DB_PASSWORD" "spec" .Values.db.password "secret" .Values.db.secret "key" "RANGER_DB_PASSWORD") }}
 {{- end }}
 
 {{/*
-Non-secret env block for the register Job.
-Secrets (admin password, StarRocks credentials) must be supplied via register.extraEnvFrom.
+Env block for the register Job: admin endpoint/creds + StarRocks config and creds. No DB.
 */}}
 {{- define "ranger.registerEnv" -}}
 - name: RANGER_ADMIN_URL
@@ -87,5 +146,8 @@ Secrets (admin password, StarRocks credentials) must be supplied via register.ex
 - name: RANGER_STARROCKS_SERVICE_NAME
   value: {{ .Values.starrocks.serviceName | quote }}
 - name: RANGER_STARROCKS_AUTOCOMPLETE
-  value: {{ .Values.starrocks.autocomplete | quote }}
+  value: {{ ternary "yes" "no" .Values.starrocks.autocomplete | quote }}
+{{- include "ranger.credEnv" (dict "name" "RANGER_ADMIN_PASSWORD" "spec" .Values.accounts.admin "secret" .Values.accounts.secret "key" "RANGER_ADMIN_PASSWORD") }}
+{{- include "ranger.credEnv" (dict "name" "RANGER_STARROCKS_USERNAME" "spec" .Values.starrocks.username "secret" .Values.starrocks.secret "key" "RANGER_STARROCKS_USERNAME") }}
+{{- include "ranger.credEnv" (dict "name" "RANGER_STARROCKS_PASSWORD" "spec" .Values.starrocks.password "secret" .Values.starrocks.secret "key" "RANGER_STARROCKS_PASSWORD") }}
 {{- end }}

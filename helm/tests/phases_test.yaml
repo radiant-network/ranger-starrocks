@@ -10,6 +10,16 @@ templates:
 set:
   image.repository: ranger-dual-mode
   db.host: postgres:5432
+  db.password:
+    secret: { name: ranger, key: db-password }
+  accounts.admin:
+    secret: { name: ranger, key: admin-password }
+  accounts.keyadmin:
+    secret: { name: ranger, key: keyadmin-password }
+  starrocks.username:
+    value: root
+  starrocks.password:
+    secret: { name: ranger-sr, key: password }
 
 tests:
   # ----------------------------------------------------------------------------------
@@ -85,53 +95,144 @@ tests:
           value: OnFailure
 
   # ----------------------------------------------------------------------------------
-  # Secret isolation: each phase carries ONLY its non-secret config vars, and the
-  # chart never injects credentials directly (those come via extraEnvFrom).
+  # Credential routing: the chart injects each credential into ONLY the phases that
+  # need it. Secrets render as valueFrom refs (the chart manages no Secrets).
   # ----------------------------------------------------------------------------------
-  - it: serve env does not leak Ranger account passwords
+  - it: serve carries the DB password but no account or StarRocks credentials
     template: deployment.yaml
     asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_DB_PASSWORD")].valueFrom.secretKeyRef.name
+          value: ranger
       - notContains:
           path: spec.template.spec.containers[0].env
           content: { name: RANGER_ADMIN_PASSWORD }
+          any: true
       - notContains:
           path: spec.template.spec.containers[0].env
           content: { name: RANGER_KEYADMIN_PASSWORD }
+          any: true
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: RANGER_STARROCKS_PASSWORD }
+          any: true
       - equal:
           path: spec.template.spec.containers[0].env[?(@.name=="RANGER_REGISTER_ON_SERVE")].value
           value: "false"
 
-  - it: migrate env does not carry StarRocks vars
+  - it: migrate carries DB + account passwords but no StarRocks vars
     template: migrate-job.yaml
     asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_DB_PASSWORD")].valueFrom.secretKeyRef.key
+          value: db-password
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_ADMIN_PASSWORD")].valueFrom.secretKeyRef.key
+          value: admin-password
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_KEYADMIN_PASSWORD")].valueFrom.secretKeyRef.key
+          value: keyadmin-password
       - notContains:
           path: spec.template.spec.containers[0].env
           content: { name: RANGER_STARROCKS_JDBC_URL }
+          any: true
       - notContains:
           path: spec.template.spec.containers[0].env
-          content: { name: RANGER_ADMIN_URL }
+          content: { name: RANGER_STARROCKS_PASSWORD }
+          any: true
 
-  - it: register env does not carry DB vars
+  - it: register carries admin + StarRocks creds but never DB vars
     template: register-job.yaml
     asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_ADMIN_PASSWORD")].valueFrom.secretKeyRef.key
+          value: admin-password
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_STARROCKS_USERNAME")].value
+          value: root
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_STARROCKS_PASSWORD")].valueFrom.secretKeyRef.name
+          value: ranger-sr
       - notContains:
           path: spec.template.spec.containers[0].env
           content: { name: RANGER_DB_HOST }
+          any: true
       - notContains:
           path: spec.template.spec.containers[0].env
           content: { name: RANGER_DB_PASSWORD }
+          any: true
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: RANGER_KEYADMIN_PASSWORD }
+          any: true
 
-  - it: migrate env is exactly the 3 non-secret vars, each a plain value (no secretKeyRef)
+  - it: translates the autocomplete boolean to yes/no for the register phase
+    template: register-job.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_STARROCKS_AUTOCOMPLETE")].value
+          value: "yes"
+
+  - it: autocomplete false renders RANGER_STARROCKS_AUTOCOMPLETE=no
+    template: register-job.yaml
+    set:
+      starrocks.autocomplete: false
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_STARROCKS_AUTOCOMPLETE")].value
+          value: "no"
+
+  - it: a group secret fills empty credentials using the env-var name as the default key
+    template: migrate-job.yaml
+    set:
+      accounts.secret: ranger-acct
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_TAGSYNC_PASSWORD")].valueFrom.secretKeyRef.name
+          value: ranger-acct
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_TAGSYNC_PASSWORD")].valueFrom.secretKeyRef.key
+          value: RANGER_TAGSYNC_PASSWORD
+
+  - it: an explicit per-field source overrides the group secret
+    template: migrate-job.yaml
+    set:
+      accounts.secret: ranger-acct
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_ADMIN_PASSWORD")].valueFrom.secretKeyRef.name
+          value: ranger
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_ADMIN_PASSWORD")].valueFrom.secretKeyRef.key
+          value: admin-password
+
+  - it: a group secret does not auto-render the optional db.rootPassword
+    template: migrate-job.yaml
+    set:
+      db.secret: ranger-db
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: { name: RANGER_DB_ROOT_PASSWORD }
+          any: true
+
+  - it: renders a configMapKeyRef when a credential is sourced from a ConfigMap
+    template: migrate-job.yaml
+    set:
+      db.rootPassword:
+        configMap: { name: ranger-config, key: db-root-password }
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_DB_ROOT_PASSWORD")].valueFrom.configMapKeyRef.name
+          value: ranger-config
+
+  - it: omits an env var whose credential source is empty (db.rootPassword unset)
     template: migrate-job.yaml
     asserts:
-      - lengthEqual:
+      - notContains:
           path: spec.template.spec.containers[0].env
-          count: 3
-      - equal:
-          path: spec.template.spec.containers[0].env[0].value
-          value: postgres:5432
-      - notExists:
-          path: spec.template.spec.containers[0].env[0].valueFrom
+          content: { name: RANGER_DB_ROOT_PASSWORD }
+          any: true
 
   # ----------------------------------------------------------------------------------
   # Optional blocks: absent by default, wired when set
