@@ -50,6 +50,9 @@ RUN PLUGIN_DIR=/opt/ranger/admin/ews/webapp/WEB-INF/classes/ranger-plugins/starr
     chmod +x /home/ranger/scripts/ranger-entrypoint.sh && \
     sed -i '/export .DIST_NAME/d' /opt/ranger/admin/setup.sh && \
     ! grep -q 'export .DIST_NAME' /opt/ranger/admin/setup.sh && \
+    SECCTX=/opt/ranger/admin/ews/webapp/WEB-INF/classes/conf.dist/security-applicationContext.xml && \
+    sed -i -E '/\/download\/\*"[[:space:]]*security="none"/d' "${SECCTX}" && \
+    ! grep -qE '/download/\*"[[:space:]]*security="none"' "${SECCTX}" && \
     chown -R ranger:ranger "${PLUGIN_DIR}" /home/ranger/scripts /ranger
 USER ranger
 

@@ -212,6 +212,46 @@ tests:
           path: spec.template.spec.containers[0].env[?(@.name=="RANGER_STARROCKS_SERVICE_NAME")].value
           value: starrocks
 
+  # ----------------------------------------------------------------------------------
+  # Download-auth users: register scopes policy/tag downloads to the built-in sync
+  # accounts (the image removes Ranger's anonymous legacy download endpoints).
+  # ----------------------------------------------------------------------------------
+  - it: register carries the sync-user download-auth defaults
+    template: register-job.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_USERSYNC_USER")].value
+          value: rangerusersync
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_TAGSYNC_USER")].value
+          value: rangertagsync
+
+  - it: register honors overridden sync users
+    template: register-job.yaml
+    set:
+      starrocks.usersyncUser: svc-policy-dl
+      starrocks.tagsyncUser: svc-tag-dl
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_USERSYNC_USER")].value
+          value: svc-policy-dl
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_TAGSYNC_USER")].value
+          value: svc-tag-dl
+
+  - it: sync users can be sourced from the starrocks group secret when emptied
+    template: register-job.yaml
+    set:
+      starrocks.usersyncUser: ""
+      starrocks.secret: ranger-sr
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_USERSYNC_USER")].valueFrom.secretKeyRef.name
+          value: ranger-sr
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_USERSYNC_USER")].valueFrom.secretKeyRef.key
+          value: RANGER_USERSYNC_USER
+
   - it: starrocks jdbcUrl can be sourced from a Secret via starrocks.secret group
     template: register-job.yaml
     set:
