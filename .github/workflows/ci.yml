@@ -41,14 +41,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # QEMU lets this amd64 runner build (and thus validate) the arm64 layers via emulation.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
+      # Build both platforms to prove they still build; with push:false and no load: the
+      # multi-arch result stays in the build cache (it can't be loaded into the docker daemon).
       - name: Build image (no push)
         uses: docker/build-push-action@v6
         with:
           context: .
           push: false
+          platforms: linux/amd64,linux/arm64
           build-args: |
             RANGER_VERSION=${{ env.RANGER_VERSION }}
           cache-from: type=gha
