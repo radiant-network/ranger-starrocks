@@ -5,6 +5,8 @@
     "username": "${RANGER_STARROCKS_USERNAME}",
     "password": "${RANGER_STARROCKS_PASSWORD}",
     "jdbc.driverClassName": "com.mysql.cj.jdbc.Driver",
-    "jdbc.url": "${RANGER_STARROCKS_JDBC_URL}"
+    "jdbc.url": "${RANGER_STARROCKS_JDBC_URL}",
+    "policy.download.auth.users": "${RANGER_USERSYNC_USER}",
+    "tag.download.auth.users": "${RANGER_TAGSYNC_USER}"
   }
 }

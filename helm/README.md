@@ -203,6 +203,8 @@ explicit hosts (the derived host has no `secretName`). No Ingress is rendered un
 | `starrocks.autocomplete` | `true` | Boolean — `true` renders `RANGER_STARROCKS_AUTOCOMPLETE=yes` and requires `username`/`password`. |
 | `starrocks.serviceName` | `starrocks` | `RANGER_STARROCKS_SERVICE_NAME`. Literal or sourced. |
 | `starrocks.jdbcUrl` | `""` | `RANGER_STARROCKS_JDBC_URL`. Literal or sourced. |
+| `starrocks.usersyncUser` | `rangerusersync` | `RANGER_USERSYNC_USER` → register (`policy.download.auth.users`); the image removes Ranger's anonymous legacy download endpoints. Literal or sourced. |
+| `starrocks.tagsyncUser` | `rangertagsync` | `RANGER_TAGSYNC_USER` → register (`tag.download.auth.users`). Literal or sourced. |
 | `starrocks.secret` | `""` | Default Secret name for all empty `starrocks.*` fields. |
 | `starrocks.username` | `""` | `RANGER_STARROCKS_USERNAME` → register (required when `autocomplete`). |
 | `starrocks.password` | `""` | `RANGER_STARROCKS_PASSWORD` → register (required when `autocomplete`). |

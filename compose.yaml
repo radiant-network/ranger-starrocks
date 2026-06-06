@@ -116,3 +116,8 @@ services:
       RANGER_STARROCKS_SERVICE_NAME: starrocks_test
       # yes -> service-def implClass = RangerServiceStarRocks (UI Test Connection / autocomplete).
       RANGER_STARROCKS_AUTOCOMPLETE: "yes"
+      # Built-in sync accounts allowed to download this service's policies/tags (now that the legacy
+      # anonymous download endpoints are locked down). Defaults baked into the entrypoint; set here
+      # for visibility.
+      RANGER_USERSYNC_USER: rangerusersync
+      RANGER_TAGSYNC_USER: rangertagsync

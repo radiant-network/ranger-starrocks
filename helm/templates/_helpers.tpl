@@ -151,6 +151,8 @@ Env block for the register Job: admin endpoint/creds + StarRocks config and cred
   value: {{ ternary "yes" "no" .Values.starrocks.autocomplete | quote }}
 {{- include "ranger.credEnv" (dict "name" "RANGER_STARROCKS_JDBC_URL" "spec" .Values.starrocks.jdbcUrl "secret" .Values.starrocks.secret "key" "RANGER_STARROCKS_JDBC_URL") }}
 {{- include "ranger.credEnv" (dict "name" "RANGER_STARROCKS_SERVICE_NAME" "spec" .Values.starrocks.serviceName "secret" .Values.starrocks.secret "key" "RANGER_STARROCKS_SERVICE_NAME") }}
+{{- include "ranger.credEnv" (dict "name" "RANGER_USERSYNC_USER" "spec" .Values.starrocks.usersyncUser "secret" .Values.starrocks.secret "key" "RANGER_USERSYNC_USER") }}
+{{- include "ranger.credEnv" (dict "name" "RANGER_TAGSYNC_USER" "spec" .Values.starrocks.tagsyncUser "secret" .Values.starrocks.secret "key" "RANGER_TAGSYNC_USER") }}
 {{- include "ranger.credEnv" (dict "name" "RANGER_ADMIN_PASSWORD" "spec" .Values.accounts.admin "secret" .Values.accounts.secret "key" "RANGER_ADMIN_PASSWORD") }}
 {{- include "ranger.credEnv" (dict "name" "RANGER_STARROCKS_USERNAME" "spec" .Values.starrocks.username "secret" .Values.starrocks.secret "key" "RANGER_STARROCKS_USERNAME") }}
 {{- include "ranger.credEnv" (dict "name" "RANGER_STARROCKS_PASSWORD" "spec" .Values.starrocks.password "secret" .Values.starrocks.secret "key" "RANGER_STARROCKS_PASSWORD") }}

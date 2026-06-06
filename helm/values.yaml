@@ -57,6 +57,11 @@ starrocks:
   autocomplete: true             # boolean: true=yes (requires username+password), false=no
   serviceName: "starrocks"       # RANGER_STARROCKS_SERVICE_NAME -> register (literal or sourced)
   jdbcUrl: ""                    # RANGER_STARROCKS_JDBC_URL     -> register (literal or sourced)
+  # Built-in sync accounts authorized to download the service's policies/tags via the authenticated
+  # endpoints (the image removes Ranger's anonymous legacy download endpoints). Defaults match the
+  # login IDs Ranger's setup.sh creates in the migrate phase.
+  usersyncUser: rangerusersync   # RANGER_USERSYNC_USER -> register (policy.download.auth.users)
+  tagsyncUser: rangertagsync     # RANGER_TAGSYNC_USER  -> register (tag.download.auth.users)
   secret: ""                     # default Secret name for all starrocks.* fields below
   # Required only when register is enabled AND autocomplete is true.
   username: ""                   # RANGER_STARROCKS_USERNAME -> register
