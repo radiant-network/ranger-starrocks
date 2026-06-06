@@ -19,6 +19,11 @@ starrocks:
   autocomplete: "yes"
   serviceName: "starrocks"
   jdbcUrl: ""
+  # Built-in sync accounts authorized to download this service's policies/tags via the authenticated
+  # endpoints (the legacy anonymous download endpoints are removed from the image's security config).
+  # Defaults match the login IDs Ranger's setup.sh creates in the migrate phase.
+  usersyncUser: rangerusersync
+  tagsyncUser: rangertagsync
 
 migrate:
   enabled: true

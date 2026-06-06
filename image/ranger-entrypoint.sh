@@ -45,6 +45,12 @@ TEMPLATE="${RANGER_SCRIPTS}/install.properties.tpl"
 #                                     Ranger falls back to the base class with no connection probing.
 : "${RANGER_STARROCKS_SERVICE_NAME:=starrocks}"
 export RANGER_STARROCKS_SERVICE_NAME
+# Built-in sync accounts authorized to download the service's policies/tags (substituted into the
+# service JSON's policy.download.auth.users / tag.download.auth.users). Defaults match the login IDs
+# Ranger's setup.sh creates from rangerUsersync_password / rangerTagsync_password.
+: "${RANGER_USERSYNC_USER:=rangerusersync}"
+: "${RANGER_TAGSYNC_USER:=rangertagsync}"
+export RANGER_USERSYNC_USER RANGER_TAGSYNC_USER
 case "${RANGER_STARROCKS_AUTOCOMPLETE:-yes}" in
   yes) export RANGER_STARROCKS_IMPL_CLASS="org.apache.ranger.services.starrocks.RangerServiceStarRocks" ;;
   *)   export RANGER_STARROCKS_IMPL_CLASS="" ;;

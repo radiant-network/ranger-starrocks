@@ -158,6 +158,8 @@ chart's `serve` Service on `serve.service.port`. No Ingress is rendered unless b
 | `starrocks.autocomplete` | `yes` | `yes` enables the StarRocks plugin class (UI Test Connection / autocomplete). |
 | `starrocks.serviceName` | `starrocks` | Registered service-instance name. |
 | `starrocks.jdbcUrl` | `""` | StarRocks JDBC URL for the registered service. |
+| `starrocks.usersyncUser` | `rangerusersync` | User allowed to download the service's policies (`policy.download.auth.users`); the image removes Ranger's anonymous legacy download endpoints. |
+| `starrocks.tagsyncUser` | `rangertagsync` | User allowed to download the service's tags (`tag.download.auth.users`). |
 | `migrate.enabled` | `true` | Render the migrate Job. |
 | `migrate.backoffLimit` | `3` | Job retries. |
 | `migrate.ttlSecondsAfterFinished` | `300` | Auto-cleanup after completion. |

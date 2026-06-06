@@ -81,6 +81,8 @@ The StarRocks connection (`RANGER_STARROCKS_USERNAME` / `RANGER_STARROCKS_PASSWO
 | `RANGER_STARROCKS_USERNAME` | — | StarRocks user. **Only needed when autocomplete is `yes`.** |
 | `RANGER_STARROCKS_PASSWORD` | — | StarRocks password. **Only needed when autocomplete is `yes`.** |
 | `RANGER_STARROCKS_JDBC_URL` | — | e.g. `jdbc:mysql://starrocks:9030`. **Only needed when autocomplete is `yes`.** |
+| `RANGER_USERSYNC_USER` | `rangerusersync` | User allowed to download the service's policies (`policy.download.auth.users`). See [Security hardening](#security-hardening). |
+| `RANGER_TAGSYNC_USER` | `rangertagsync` | User allowed to download the service's tags (`tag.download.auth.users`). See [Security hardening](#security-hardening). |
 
 ### Registration (used by `register` / `serve`)
 
@@ -93,6 +95,34 @@ The StarRocks connection (`RANGER_STARROCKS_USERNAME` / `RANGER_STARROCKS_PASSWO
 | `RANGER_ADMIN_WAIT_INTERVAL` | `3` | `serve` readiness poll interval (seconds). |
 | `RANGER_SERVICEDEF_DIR` | `/ranger/service-defs` | Service-defs applied (create-or-update). |
 | `RANGER_SERVICE_DIR` | `/ranger/services` | Service instances applied (create-only). |
+
+## Security hardening
+
+Stock Ranger 2.8.0 declares the **legacy non-secure download endpoints** as `security="none"` in
+`security-applicationContext.xml`, leaving them **anonymously readable** — anyone who can reach the
+admin port can pull policies, roles, tags, and the user/group store without credentials:
+
+```
+/service/plugins/policies/download/*
+/service/tags/download/*
+/service/roles/download/*
+/service/xusers/download/*
+```
+
+The `Dockerfile` strips those four `security="none"` lines from the baked `conf.dist` copy (with a
+`! grep` build assertion that fails the build if a future base image reformats them), so the paths
+fall under the default `isAuthenticated()` rule and now require HTTP Basic auth. The StarRocks plugin
+is unaffected because it uses the authenticated `/service/.../secure/download/*` endpoints.
+
+Those authenticated download endpoints check the service's allowlists, so the StarRocks service is
+registered with the two built-in **sync accounts** (least privilege, instead of `admin`):
+
+- `policy.download.auth.users` ← `RANGER_USERSYNC_USER` (default `rangerusersync`)
+- `tag.download.auth.users` ← `RANGER_TAGSYNC_USER` (default `rangertagsync`)
+
+These defaults match the login IDs Ranger's `setup.sh` creates from `RANGER_USERSYNC_PASSWORD` /
+`RANGER_TAGSYNC_PASSWORD` in the `migrate` phase. A plugin/sync client can then authenticate as the
+matching account rather than `admin` (`admin` retains access regardless, via its sys-admin role).
 
 ## Local development
 

@@ -121,6 +121,33 @@ tests:
           path: spec.template.spec.containers[0].env
           content: { name: RANGER_DB_PASSWORD }
 
+  # ----------------------------------------------------------------------------------
+  # Download-auth users: the register Job scopes policy/tag downloads to the built-in
+  # sync accounts (the image removes Ranger's anonymous legacy download endpoints).
+  # ----------------------------------------------------------------------------------
+  - it: register env carries the sync-user download-auth defaults
+    template: register-job.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_USERSYNC_USER")].value
+          value: rangerusersync
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_TAGSYNC_USER")].value
+          value: rangertagsync
+
+  - it: register env honors overridden sync users
+    template: register-job.yaml
+    set:
+      starrocks.usersyncUser: svc-policy-dl
+      starrocks.tagsyncUser: svc-tag-dl
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_USERSYNC_USER")].value
+          value: svc-policy-dl
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="RANGER_TAGSYNC_USER")].value
+          value: svc-tag-dl
+
   - it: migrate env is exactly the 3 non-secret vars, each a plain value (no secretKeyRef)
     template: migrate-job.yaml
     asserts:

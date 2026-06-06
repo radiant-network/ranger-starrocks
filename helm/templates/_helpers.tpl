@@ -88,4 +88,8 @@ Secrets (admin password, StarRocks credentials) must be supplied via register.ex
   value: {{ .Values.starrocks.serviceName | quote }}
 - name: RANGER_STARROCKS_AUTOCOMPLETE
   value: {{ .Values.starrocks.autocomplete | quote }}
+- name: RANGER_USERSYNC_USER
+  value: {{ .Values.starrocks.usersyncUser | quote }}
+- name: RANGER_TAGSYNC_USER
+  value: {{ .Values.starrocks.tagsyncUser | quote }}
 {{- end }}
