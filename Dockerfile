@@ -37,6 +37,13 @@ COPY image/services/starrocks.json     /ranger/services/starrocks.json
 # `export` dumps every env var (incl. secrets) to the log. It's a no-op bug, so the line is removed
 # (the `! grep` asserts it's gone, failing the build if a future base image changes it).
 #
+# CelerData only supports `simple` and `kerberized`. 'kerberized' out of scope for this project at this time.
+# so the plugin can only read ANONYMOUS endpoints. We therefore strip security="none" from only the `tags` + 
+# `xusers` download endpoints (forcing auth -- keeps the user/group directory protected), and LEAVE `policies` 
+# + `roles` anonymous so the plugin can sync. The `! grep`/`grep` asserts both: tags+xusers gone, policies+roles
+# kept. Network exposure of the anonymous policy/role feeds is contained by the Ranger ALB SG, which is
+# scoped to the StarRocks cluster SG + admin prefix list (see aws-infra-d3b-accounts alb/.../radiant-prd/sg.tf).
+#
 # StarRocks Ranger plugin jars on the admin classpath, so test-connection / autocomplete work at first
 # boot.
 ARG STARROCKS_PLUGIN_JAR=https://releases.starrocks.io/resources/ranger-starrocks-plugin-3.0.0-SNAPSHOT.jar
@@ -51,8 +58,10 @@ RUN PLUGIN_DIR=/opt/ranger/admin/ews/webapp/WEB-INF/classes/ranger-plugins/starr
     sed -i '/export .DIST_NAME/d' /opt/ranger/admin/setup.sh && \
     ! grep -q 'export .DIST_NAME' /opt/ranger/admin/setup.sh && \
     SECCTX=/opt/ranger/admin/ews/webapp/WEB-INF/classes/conf.dist/security-applicationContext.xml && \
-    sed -i -E '/\/download\/\*"[[:space:]]*security="none"/d' "${SECCTX}" && \
-    ! grep -qE '/download/\*"[[:space:]]*security="none"' "${SECCTX}" && \
+    sed -i -E '/\/(tags|xusers)\/download\/\*"[[:space:]]*security="none"/d' "${SECCTX}" && \
+    ! grep -qE '/(tags|xusers)/download/\*"[[:space:]]*security="none"' "${SECCTX}" && \
+    grep -qE '/policies/download/\*"[[:space:]]*security="none"' "${SECCTX}" && \
+    grep -qE '/roles/download/\*"[[:space:]]*security="none"' "${SECCTX}" && \
     chown -R ranger:ranger "${PLUGIN_DIR}" /home/ranger/scripts /ranger
 USER ranger
 
