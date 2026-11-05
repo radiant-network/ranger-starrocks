@@ -50,6 +50,7 @@ ARG STARROCKS_PLUGIN_JAR=https://releases.starrocks.io/resources/ranger-starrock
 ARG MYSQL_CONNECTOR_JAR=https://repo1.maven.org/maven2/com/mysql/mysql-connector-j/9.7.0/mysql-connector-j-9.7.0.jar
 
 USER root
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 RUN PLUGIN_DIR=/opt/ranger/admin/ews/webapp/WEB-INF/classes/ranger-plugins/starrocks && \
     mkdir -p "${PLUGIN_DIR}" && \
     curl -fsSL -o "${PLUGIN_DIR}/ranger-starrocks-plugin.jar" "${STARROCKS_PLUGIN_JAR}" && \
